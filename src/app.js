@@ -1,49 +1,49 @@
-require ('dotenv').config();
 const express = require('express');
+const cors = require('cors');
+require('dotenv').config();
+const connectDB = require('./config/db');
+
+const authRoutes = require('./routes/auth.routes');
+const student = require('./routes/user.route');
+const admin = require('./routes/admin.routes');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
-const authRoutes=require("./routes/auth.routes")
-const student=require("./routes/user.route")
-const admin=require("./routes/admin.routes")
-const connectDB=require('./config/db');
-const cors = require('cors');
 
 // Middleware
-app.use(express.json()); // Parse JSON bodies
-app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-//cors setup
+// CORS - allow local frontend (Vite)
 app.use(cors({
-  origin: "http://localhost:5173",
+  origin: 'http://localhost:5173',
   credentials: true
 }));
 
-app.use("/auth",authRoutes)
-app.use("/dashboard", student)
-app.use("/dashboard",admin)
+app.use('/auth', authRoutes);
+app.use('/dashboard', student);
+app.use('/dashboard', admin);
 
-// Basic route
+// Basic route (health check)
 app.get('/', (req, res) => {
   res.json({ message: 'Welcome to Express API!' });
 });
 
-
-//handling error globle
+// Global error handler
 app.use((err, req, res, next) => {
-  console.error("ERROR:", err);
-
+  console.error('ERROR:', err);
   res.status(err.statusCode || 500).json({
     success: false,
-    error: err.message || "Internal Server Error"
+    error: err.message || 'Internal Server Error'
   });
 });
 
-//connected to database
+// Connect to DB and start server
 connectDB();
 
-// Start server
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
 
 module.exports = app;
+
