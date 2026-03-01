@@ -1,34 +1,38 @@
-require ('dotenv').config();
-const express = require('express');
+
+
+require("dotenv").config();
+const express = require("express");
+const cors = require("cors");
+
+const authRoutes = require("./routes/auth.routes");
+const studentRoutes = require("./routes/student.route");
+const adminRoutes = require("./routes/admin.routes");
+
+//mood route
+const moodRoutes=require("./routes/mood.routes")
+
 const app = express();
-const PORT = process.env.PORT || 3000;
-const authRoutes=require("./routes/auth.routes")
-const student=require("./routes/user.route")
-const admin=require("./routes/admin.routes")
-const connectDB=require('./config/db');
-const cors = require('cors');
 
 // Middleware
-app.use(express.json()); // Parse JSON bodies
-app.use(express.urlencoded({ extended: true })); // Parse URL-encoded bodies
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
-//cors setup
 app.use(cors({
   origin: "http://localhost:5173",
   credentials: true
 }));
 
-app.use("/auth",authRoutes)
-app.use("/dashboard", student)
-app.use("/dashboard",admin)
-
-// Basic route
-app.get('/', (req, res) => {
-  res.json({ message: 'Welcome to Express API!' });
+// Routes
+app.use("/auth", authRoutes);
+app.use("/dashboard", studentRoutes);
+app.use("/dashboard", adminRoutes);
+app.use("/api/mood",moodRoutes)
+// Health check
+app.get("/", (req, res) => {
+  res.json({ message: "Welcome to Express API!" });
 });
 
-
-//handling error globle
+// Global error handler
 app.use((err, req, res, next) => {
   console.error("ERROR:", err);
 
@@ -36,14 +40,6 @@ app.use((err, req, res, next) => {
     success: false,
     error: err.message || "Internal Server Error"
   });
-});
-
-//connected to database
-connectDB();
-
-// Start server
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
 });
 
 module.exports = app;

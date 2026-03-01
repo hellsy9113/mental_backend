@@ -1,38 +1,54 @@
+const mongoose=require("mongoose")
 const User = require("../models/User")
 const bcrypt = require('bcrypt')
 const jwt = require('jsonwebtoken');
-
+const StudentDashboard=require("../models/StudentDashboard")
 //TO DO -Register service
+
 async function registerUser(userData) {
-    const { name, email, password } = userData
+    const session = await mongoose.startSession();
+    session.startTransaction();
 
-    //checking if all field exist
-    if (!name || !email || !password) {
-        const error = new Error("All fields are required");
-        error.statusCode = 400;
+    try {
+        const { name, email, password } = userData;
+
+        if (!name || !email || !password) {
+            const error = new Error("All fields are required");
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const userCheck = await User.findOne({ email });
+        if (userCheck) {
+            const error = new Error("Email already exists");
+            error.statusCode = 400;
+            throw error;
+        }
+
+        const hashPassword = await bcrypt.hash(password, 10);
+
+        const user = await User.create([{
+            name,
+            email,
+            password: hashPassword
+        }], { session });
+        
+        console.log(typeof StudentDashboard);
+
+        await StudentDashboard.create([{
+            userId: user[0]._id
+        }], { session });
+
+        await session.commitTransaction();
+        session.endSession();
+
+        return user[0];
+
+    } catch (error) {
+        await session.abortTransaction();
+        session.endSession();
         throw error;
     }
-
-    //checking if email already exist
-    const userCheck = await User.findOne({ email })
-    if (userCheck) {
-        const error = new Error("Email already exist");
-        error.statusCode = 400;
-        throw error;
-    }
-    //hashind password
-    const hashPassword = await bcrypt.hash(userData.password, 10)
-
-    //create new user
-    const user = new User({
-        name,
-        email,
-        password: hashPassword
-    })
-
-    //saving user--creating new user
-    await user.save();
-    return user;
 }
 
 //TO DO-login service

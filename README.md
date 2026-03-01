@@ -26,4 +26,56 @@ mental_healh_backend/
 ├─ package.json
 └─ README.md
 # mental_backend
+
 # mental_backend
+
+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
+
+
+
+
+
+
+
+mental_healh_backend/
+├─ src/
+│  ├─ config/
+│  │  └─ db.js
+│  ├─ controller/
+│  │  ├─ admin.controller.js
+│  │  ├─ auth.controller.js
+│  │  ├─ mood.controller.js
+│  │  ├─ moodCheckIn.controller.js
+│  │  └─ student.controller.js
+│  ├─ middleware/
+│  │  └─ auth.middleware.js
+│  ├─ models/
+│  │  ├─ Mood.js
+│  │  ├─ moodCheckIn.js
+│  │  ├─ StudentDashboard.js
+│  │  └─ User.js
+│  ├─ routes/
+│  │  ├─ admin.routes.js
+│  │  ├─ auth.routes.js
+│  │  ├─ mood.routes.js
+│  │  └─ student.route.js
+│  ├─ services/
+│  │  ├─ agreggate/
+│  │  │  └─ mood.service.js
+│  │  ├─ admin.services.js
+│  │  ├─ auth.services.js
+│  │  ├─ moodCheckIn.service.js
+│  │  └─ student.services.js
+│  ├─ util/
+│  ├─ app.js
+│  └─ server.js
+├─ tests/
+│  ├─ integration/
+│  │  └─ moodCheckIn.test.js
+│  ├─ mood.js
+│  └─ setup.js
+├─ .env
+├─ .gitignore
+├─ package-lock.json
+├─ package.json
+└─ README.md
