@@ -1,17 +1,20 @@
-const mongoose=require ('mongoose');
+const mongoose = require('mongoose');
 
-const connectDB=async()=>
-{
-    try{
-    await mongoose.connect(process.env.MONGO_URL);
-            console.log("mongoDB connected successfully");
+const connectDB = async () => {
+  const uri = process.env.MONGO_URL;
+  if (!uri) {
+    console.warn('MONGO_URL not set — skipping DB connection (development only)');
+    return;
+  }
 
-    }
-    catch(error)
-    {
-        console.error('mongoDB connection failed',error.message);
-        process.exit(1);
-    }
+  try {
+    await mongoose.connect(uri);
+    console.log('mongoDB connected successfully');
+  } catch (error) {
+    console.error('mongoDB connection failed', error.message);
+    // keep server running for local frontend development
+  }
 };
-module.exports=connectDB;
+
+module.exports = connectDB;
 

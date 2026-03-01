@@ -29,8 +29,6 @@ mental_healh_backend/
 
 # mental_backend
 
-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
-
 
 
 
