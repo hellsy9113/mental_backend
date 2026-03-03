@@ -4,8 +4,13 @@
   "main": "index.js",
   "scripts": {
     "test": "jest",
-    "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "start": "node src/app.js",
+    "dev": "nodemon src/server.js",
+     "test:auth": "jest tests/auth.test.js",
+    "test:mood": "jest tests/mood.test.js",
+    "test:student": "jest tests/student.test.js",
+    "test:counsellor": "jest tests/counsellor.test.js",
+    "test:admin": "jest tests/admin.test.js"
   },
   "jest": {
     "testEnvironment": "node",

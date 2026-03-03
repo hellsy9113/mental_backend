@@ -4,11 +4,11 @@ const {
   getMoodStatistics,
 } = require("../controller/mood.controller");
 
-const {verifyToken} = require("../middleware/auth.middleware");
+const {verifyToken, isStudent} = require("../middleware/auth.middleware");
 
 const router = express.Router();
 
-router.post("/", verifyToken, addMood);
-router.get("/stats", verifyToken, getMoodStatistics);
+router.post("/", verifyToken,isStudent, addMood);
+router.get("/stats", verifyToken,isStudent,getMoodStatistics);
 
 module.exports = router;
