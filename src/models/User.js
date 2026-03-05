@@ -66,11 +66,50 @@ const userSchema = new mongoose.Schema(
         message: 'Role must be student, counsellor, or admin'
       },
       default: 'student'
+    },
+
+    bio: {
+      type: String,
+      default: '',
+      maxlength: 300
+    },
+
+    // Hex colour string for the avatar background e.g. "#6366F1"
+    avatarColor: {
+      type: String,
+      default: ''
+    },
+
+    // Academic identity — drives future forum/event personalisation per institution
+    institution: {
+      type: String,
+      default: '',
+      trim: true,
+      maxlength: 150
+    },
+
+    course: {
+      type: String,
+      default: '',
+      trim: true,
+      maxlength: 100
+    },
+
+    // Course start year e.g. 2023 — current year is derived on the frontend
+    courseStartYear: {
+      type: Number,
+      default: null,
+      min: 1980,
+      max: 2100
     }
   },
   {
     timestamps: true
   }
 );
+
+// Indexes for future forum/events — quickly find all users in same institution/course
+userSchema.index({ institution: 1 });
+userSchema.index({ institution: 1, course: 1 });
 
 module.exports = mongoose.model('User', userSchema);

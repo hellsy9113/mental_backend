@@ -87,3 +87,18 @@ module.exports = {
   addMood,
   getMoodStatistics,
 };
+
+// GET /api/mood/weekly-breakdown?tz=330
+// tz = client's timezone offset in minutes (from JS: -new Date().getTimezoneOffset())
+const getWeeklyBreakdown = async (req, res) => {
+  try {
+    const tzOffsetMinutes = parseInt(req.query.tz, 10) || 0;
+    const breakdown = await moodService.getWeeklyBreakdown(req.user.id, tzOffsetMinutes);
+    res.json({ success: true, data: breakdown });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Re-export all three
+Object.assign(module.exports, { getWeeklyBreakdown });
