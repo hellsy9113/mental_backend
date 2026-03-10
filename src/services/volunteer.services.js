@@ -1,99 +1,56 @@
-// src/services/volunteer.services.js
 const VolunteerApplication = require('../models/VolunteerApplication');
 
-// ── Student: Submit application ────────────────────────────────────────────
 async function submitApplication(userId, body) {
-  // Prevent duplicate pending applications
+  const { userId: _ignored, ...safeBody } = body;
   const existing = await VolunteerApplication.findOne({ userId, status: 'pending' });
-  if (existing) {
-    const error = new Error('You already have a pending volunteer application');
-    error.statusCode = 409;
-    throw error;
-  }
-
-  const application = await VolunteerApplication.create({ userId, ...body });
-  return application;
+  if (existing) { const e = new Error('You already have a pending volunteer application'); e.statusCode = 409; throw e; }
+  const approved = await VolunteerApplication.findOne({ userId, status: 'approved' });
+  if (approved) { const e = new Error('You are already an approved volunteer'); e.statusCode = 409; throw e; }
+  return await VolunteerApplication.create({ userId, ...safeBody });
 }
 
-// ── Student: Get own application ───────────────────────────────────────────
 async function getMyApplication(userId) {
-  const application = await VolunteerApplication.findOne({ userId }).sort({ createdAt: -1 });
-  if (!application) {
-    const error = new Error('No volunteer application found');
-    error.statusCode = 404;
-    throw error;
-  }
-  return application;
+  const applications = await VolunteerApplication.find({ userId }).sort({ createdAt: -1 }).limit(1);
+  if (!applications.length) { const e = new Error('No volunteer application found'); e.statusCode = 404; throw e; }
+  return applications[0];
 }
 
-// ── Student: Withdraw pending application ─────────────────────────────────
 async function withdrawApplication(userId) {
   const application = await VolunteerApplication.findOne({ userId, status: 'pending' });
-  if (!application) {
-    const error = new Error('No pending application to withdraw');
-    error.statusCode = 404;
-    throw error;
-  }
+  if (!application) { const e = new Error('No pending application to withdraw'); e.statusCode = 404; throw e; }
   await application.deleteOne();
   return { message: 'Application withdrawn successfully' };
 }
 
-// ── Admin: List all applications (optionally filtered by status) ───────────
 async function listApplications(status) {
+  const VALID = ['pending', 'approved', 'rejected'];
+  if (status && !VALID.includes(status)) { const e = new Error(`Invalid status. Must be: ${VALID.join(', ')}`); e.statusCode = 400; throw e; }
   const filter = status ? { status } : {};
-  const applications = await VolunteerApplication.find(filter)
-    .populate('userId', 'name email')
-    .sort({ createdAt: -1 });
-  return applications;
+  return await VolunteerApplication.find(filter).populate('userId', 'name email').sort({ createdAt: -1 });
 }
 
-// ── Admin: Get single application by ID ───────────────────────────────────
 async function getApplicationById(id) {
-  const application = await VolunteerApplication.findById(id).populate('userId', 'name email');
-  if (!application) {
-    const error = new Error('Application not found');
-    error.statusCode = 404;
-    throw error;
-  }
+  let application;
+  try { application = await VolunteerApplication.findById(id).populate('userId', 'name email'); }
+  catch (castError) { const e = new Error('Invalid application ID format'); e.statusCode = 400; throw e; }
+  if (!application) { const e = new Error('Application not found'); e.statusCode = 404; throw e; }
   return application;
 }
 
-// ── Admin: Review (approve / reject) application ──────────────────────────
 async function reviewApplication(id, adminId, { status, adminNotes }) {
-  const VALID = ['approved', 'rejected'];
-  if (!VALID.includes(status)) {
-    const error = new Error('Status must be "approved" or "rejected"');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  const application = await VolunteerApplication.findById(id);
-  if (!application) {
-    const error = new Error('Application not found');
-    error.statusCode = 404;
-    throw error;
-  }
-
-  if (application.status !== 'pending') {
-    const error = new Error(`Application has already been ${application.status}`);
-    error.statusCode = 409;
-    throw error;
-  }
-
-  application.status     = status;
+  if (!status) { const e = new Error('status field is required (approved or rejected)'); e.statusCode = 400; throw e; }
+  if (!['approved', 'rejected'].includes(status)) { const e = new Error('Status must be "approved" or "rejected"'); e.statusCode = 400; throw e; }
+  let application;
+  try { application = await VolunteerApplication.findById(id); }
+  catch (castError) { const e = new Error('Invalid application ID format'); e.statusCode = 400; throw e; }
+  if (!application) { const e = new Error('Application not found'); e.statusCode = 404; throw e; }
+  if (application.status !== 'pending') { const e = new Error(`Application has already been ${application.status}`); e.statusCode = 409; throw e; }
+  application.status = status;
   application.reviewedBy = adminId;
   application.reviewedAt = new Date();
-  application.adminNotes = adminNotes || '';
-
+  application.adminNotes = adminNotes ?? '';
   await application.save();
   return application;
 }
 
-module.exports = {
-  submitApplication,
-  getMyApplication,
-  withdrawApplication,
-  listApplications,
-  getApplicationById,
-  reviewApplication
-};
+module.exports = { submitApplication, getMyApplication, withdrawApplication, listApplications, getApplicationById, reviewApplication };
