@@ -10,7 +10,8 @@
     "test:mood": "jest tests/mood.test.js",
     "test:student": "jest tests/student.test.js",
     "test:counsellor": "jest tests/counsellor.test.js",
-    "test:admin": "jest tests/admin.test.js"
+    "test:admin": "jest tests/admin.test.js",
+    "test:volunteer": "jest tests/volunteer.test.js"
   },
   "jest": {
     "testEnvironment": "node",

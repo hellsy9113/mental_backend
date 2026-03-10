@@ -10,7 +10,7 @@ const moodRoutes     = require('./routes/mood.routes');
 const profileRoutes  = require('./routes/profile.routes');
 const journalRoutes  = require('./routes/journal.routes');
 const musicRoutes = require("./routes/music.routes");
-
+const volunteerRoutes = require('./routes/volunteer.routes');
 
 const app = express();
 
@@ -33,6 +33,8 @@ app.use('/api/mood',   moodRoutes);
 app.use('/profile',    profileRoutes);
 app.use('/api/journal', journalRoutes);   // NEW
 app.use('/api/music',musicRoutes);
+app.use('/api/volunteer', volunteerRoutes);
+
 
 // Health check
 app.get('/', (req, res) => {
