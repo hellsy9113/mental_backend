@@ -1,5 +1,5 @@
 const ChatLog = require("../models/aarivChatModel.js");
-const { generateAarivResponse } = require("../services/aarivservice.js");
+const { generateAarivResponse } = require("../services/aariv.services.js");
 
 const chatWithAariv = async (req, res) => {
   try {
