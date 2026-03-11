@@ -24,6 +24,7 @@ const moodRoutes = require('./routes/mood.routes');
 const profileRoutes = require('./routes/profile.routes');
 const journalRoutes = require('./routes/journal.routes');
 const musicRoutes = require("./routes/music.routes");
+const volunteerRoutes = require('./routes/volunteer.routes');
 
 app.use("/api/aariv", aarivRoutes);
 app.use('/auth', authRoutes);
@@ -34,6 +35,7 @@ app.use('/api/mood', moodRoutes);
 app.use('/profile', profileRoutes);
 app.use('/api/journal', journalRoutes);
 app.use('/api/music', musicRoutes);
+app.use('/api/volunteer', volunteerRoutes);
 
 // Health check
 app.get('/', (req, res) => {
