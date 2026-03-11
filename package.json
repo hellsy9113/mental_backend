@@ -6,7 +6,7 @@
     "test": "jest",
     "start": "node src/app.js",
     "dev": "nodemon src/server.js",
-     "test:auth": "jest tests/auth.test.js",
+    "test:auth": "jest tests/auth.test.js",
     "test:mood": "jest tests/mood.test.js",
     "test:student": "jest tests/student.test.js",
     "test:counsellor": "jest tests/counsellor.test.js",
@@ -24,6 +24,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
