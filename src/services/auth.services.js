@@ -1,5 +1,3 @@
-
-
 const mongoose = require('mongoose');
 const User = require('../models/User');
 const bcrypt = require('bcrypt');
@@ -7,31 +5,22 @@ const jwt = require('jsonwebtoken');
 const StudentDashboard = require('../models/StudentDashboard');
 const CounsellorProfile = require('../models/CounsellorProfile');
 
-// ──────────────────────────────────────────────
-// registerUser
-// Accepts: { name, email, password, role }
-// role defaults to 'student' if not provided.
-// Creates role-specific profile in same transaction.
-// ──────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────
+// registerUser  (public endpoint — role is ALWAYS forced to 'student')
+//
+// Counsellors and admins are created by an admin via createStaffUser,
+// never through public registration. Any role value in the request
+// body is silently ignored.
+// ──────────────────────────────────────────────────────────────────
 async function registerUser(userData) {
-  const { name, email, password, role = 'student' } = userData;
+  const { name, email, password } = userData;
 
-  // Basic field validation
   if (!name || !email || !password) {
     const error = new Error('All fields are required');
     error.statusCode = 400;
     throw error;
   }
 
-  // Validate role
-  const validRoles = ['student', 'counsellor', 'admin'];
-  if (!validRoles.includes(role)) {
-    const error = new Error('Invalid role. Must be student, counsellor, or admin');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  // Check for duplicate email
   const existing = await User.findOne({ email });
   if (existing) {
     const error = new Error('Email already exists');
@@ -41,52 +30,100 @@ async function registerUser(userData) {
 
   const hashedPassword = await bcrypt.hash(password, 10);
 
-  // Detect replica set support — transactions require a replica set.
-  // Standalone MongoDB (used in tests) doesn't support them.
+  const newUserData = {
+    name,
+    email,
+    password: hashedPassword,
+    role: 'student',        // always — never trust client
+    profileComplete: false, // triggers first-login setup flow
+    tokenVersion: 0
+  };
+
   const supportsTransactions =
     mongoose.connection.client?.topology?.description?.type !== 'Single';
 
   if (supportsTransactions) {
-    // ── Production path: atomic transaction ──
     const session = await mongoose.startSession();
     session.startTransaction();
     try {
-      const [user] = await User.create(
-        [{ name, email, password: hashedPassword, role }],
-        { session }
-      );
-      if (role === 'student') {
-        await StudentDashboard.create([{ userId: user._id }], { session });
-      } else if (role === 'counsellor') {
+      const [user] = await User.create([newUserData], { session });
+      await StudentDashboard.create([{ userId: user._id }], { session });
+      await session.commitTransaction();
+      session.endSession();
+      return user;
+    } catch (err) {
+      await session.abortTransaction();
+      session.endSession();
+      throw err;
+    }
+  } else {
+    const user = await User.create(newUserData);
+    await StudentDashboard.create({ userId: user._id });
+    return user;
+  }
+}
+
+// ──────────────────────────────────────────────────────────────────
+// createStaffUser  (admin-only — creates counsellor or admin accounts)
+//
+// Called from POST /admin/users — a protected route that requires
+// verifyToken + isAdmin. Not exposed on the public auth routes.
+// ──────────────────────────────────────────────────────────────────
+async function createStaffUser({ name, email, password, role }) {
+  if (!name || !email || !password || !role) {
+    const error = new Error('name, email, password and role are required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!['counsellor', 'admin'].includes(role)) {
+    const error = new Error('Staff role must be counsellor or admin');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const existing = await User.findOne({ email });
+  if (existing) {
+    const error = new Error('Email already exists');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 10);
+  const staffData = { name, email, password: hashedPassword, role, profileComplete: true, tokenVersion: 0 };
+
+  const supportsTransactions =
+    mongoose.connection.client?.topology?.description?.type !== 'Single';
+
+  if (supportsTransactions) {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+    try {
+      const [user] = await User.create([staffData], { session });
+      if (role === 'counsellor') {
         await CounsellorProfile.create([{ userId: user._id }], { session });
       }
       await session.commitTransaction();
       session.endSession();
       return user;
-    } catch (error) {
+    } catch (err) {
       await session.abortTransaction();
       session.endSession();
-      throw error;
+      throw err;
     }
   } else {
-    // ── Test / standalone path: sequential saves ──
-    const user = await User.create({ name, email, password: hashedPassword, role });
-    if (role === 'student') {
-      await StudentDashboard.create({ userId: user._id });
-    } else if (role === 'counsellor') {
-      await CounsellorProfile.create({ userId: user._id });
-    }
+    const user = await User.create(staffData);
+    if (role === 'counsellor') await CounsellorProfile.create({ userId: user._id });
     return user;
   }
 }
 
-// ──────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────
 // loginUser
-// Returns JWT with id, email, role embedded.
-// ──────────────────────────────────────────────
-async function loginUser(userData) {
-  const { email, password } = userData;
-
+// Embeds tokenVersion in JWT so verifyToken can detect stale tokens
+// issued before a role change.
+// ──────────────────────────────────────────────────────────────────
+async function loginUser({ email, password }) {
   if (!email || !password) {
     const error = new Error('All fields are required');
     error.statusCode = 400;
@@ -107,9 +144,13 @@ async function loginUser(userData) {
     throw error;
   }
 
-  // Embed role in token so middleware can check without a DB call
   const token = jwt.sign(
-    { id: user._id, email: user.email, role: user.role },
+    {
+      id:           user._id,
+      email:        user.email,
+      role:         user.role,
+      tokenVersion: user.tokenVersion ?? 0   // stale-token detection
+    },
     process.env.JWT_SECRET,
     { expiresIn: '24h' }
   );
@@ -117,17 +158,18 @@ async function loginUser(userData) {
   return {
     token,
     user: {
-      id:          user._id,
-      name:        user.name,
-      email:       user.email,
-      role:        user.role,
-      bio:         user.bio         || '',
-      avatarColor: user.avatarColor || '',
+      id:              user._id,
+      name:            user.name,
+      email:           user.email,
+      role:            user.role,
+      bio:             user.bio             || '',
+      avatarColor:     user.avatarColor     || '',
       institution:     user.institution     || '',
       course:          user.course          || '',
       courseStartYear: user.courseStartYear || null,
+      profileComplete: user.profileComplete,
     }
   };
 }
 
-module.exports = { registerUser, loginUser };
+module.exports = { registerUser, createStaffUser, loginUser };
