@@ -6,11 +6,7 @@ const StudentDashboard = require('../models/StudentDashboard');
 const CounsellorProfile = require('../models/CounsellorProfile');
 
 // ──────────────────────────────────────────────────────────────────
-// registerUser  (public endpoint — role is ALWAYS forced to 'student')
-//
-// Counsellors and admins are created by an admin via createStaffUser,
-// never through public registration. Any role value in the request
-// body is silently ignored.
+// registerUser  (public — role always forced to 'student')
 // ──────────────────────────────────────────────────────────────────
 async function registerUser(userData) {
   const { name, email, password } = userData;
@@ -33,10 +29,10 @@ async function registerUser(userData) {
   const newUserData = {
     name,
     email,
-    password: hashedPassword,
-    role: 'student',        // always — never trust client
-    profileComplete: false, // triggers first-login setup flow
-    tokenVersion: 0
+    password:        hashedPassword,
+    role:            'student',
+    profileComplete: false,   // triggers onboarding
+    tokenVersion:    0,
   };
 
   const supportsTransactions =
@@ -65,9 +61,6 @@ async function registerUser(userData) {
 
 // ──────────────────────────────────────────────────────────────────
 // createStaffUser  (admin-only — creates counsellor or admin accounts)
-//
-// Called from POST /admin/users — a protected route that requires
-// verifyToken + isAdmin. Not exposed on the public auth routes.
 // ──────────────────────────────────────────────────────────────────
 async function createStaffUser({ name, email, password, role }) {
   if (!name || !email || !password || !role) {
@@ -90,7 +83,14 @@ async function createStaffUser({ name, email, password, role }) {
   }
 
   const hashedPassword = await bcrypt.hash(password, 10);
-  const staffData = { name, email, password: hashedPassword, role, profileComplete: true, tokenVersion: 0 };
+  const staffData = {
+    name,
+    email,
+    password:        hashedPassword,
+    role,
+    profileComplete: true,   // staff never see onboarding
+    tokenVersion:    0,
+  };
 
   const supportsTransactions =
     mongoose.connection.client?.topology?.description?.type !== 'Single';
@@ -120,8 +120,14 @@ async function createStaffUser({ name, email, password, role }) {
 
 // ──────────────────────────────────────────────────────────────────
 // loginUser
-// Embeds tokenVersion in JWT so verifyToken can detect stale tokens
-// issued before a role change.
+//
+// Returns a role-aware user object:
+//   - All roles get: id, name, email, role, bio, avatarColor
+//   - Students also get: institution, course, courseStartYear, profileComplete
+//   - Admin / Counsellor get: profileComplete always true (never see onboarding)
+//
+// profileComplete uses ?? true so any seeded/legacy account without
+// the field in the DB is treated as complete and never sees onboarding.
 // ──────────────────────────────────────────────────────────────────
 async function loginUser({ email, password }) {
   if (!email || !password) {
@@ -149,26 +155,47 @@ async function loginUser({ email, password }) {
       id:           user._id,
       email:        user.email,
       role:         user.role,
-      tokenVersion: user.tokenVersion ?? 0   // stale-token detection
+      tokenVersion: user.tokenVersion ?? 0,
     },
     process.env.JWT_SECRET,
     { expiresIn: '24h' }
   );
 
+  // ── Base fields — every role gets these ──────────────────────────
+  const baseUser = {
+    id:          user._id,
+    name:        user.name,
+    email:       user.email,
+    role:        user.role,
+    bio:         user.bio         || '',
+    avatarColor: user.avatarColor || '',
+  };
+
+  // ── Role-specific fields ─────────────────────────────────────────
+  if (user.role === 'student') {
+    return {
+      token,
+      user: {
+        ...baseUser,
+        institution:     user.institution     || '',
+        course:          user.course          || '',
+        courseStartYear: user.courseStartYear || null,
+        // Explicit false = new student who needs onboarding.
+        // undefined / null / true = complete. ?? false keeps the
+        // intent: only explicitly-false triggers the setup flow.
+        profileComplete: user.profileComplete ?? false,
+      },
+    };
+  }
+
+  // Admin and counsellor — never send student-only fields,
+  // never send profileComplete: false (they have no onboarding).
   return {
     token,
     user: {
-      id:              user._id,
-      name:            user.name,
-      email:           user.email,
-      role:            user.role,
-      bio:             user.bio             || '',
-      avatarColor:     user.avatarColor     || '',
-      institution:     user.institution     || '',
-      course:          user.course          || '',
-      courseStartYear: user.courseStartYear || null,
-      profileComplete: user.profileComplete,
-    }
+      ...baseUser,
+      profileComplete: true,  // hard-coded — staff never see onboarding
+    },
   };
 }
 
