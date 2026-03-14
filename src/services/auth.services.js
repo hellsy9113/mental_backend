@@ -8,14 +8,21 @@ const CounsellorProfile = require('../models/CounsellorProfile');
 // ──────────────────────────────────────────────────────────────────
 // registerUser  (public — role always forced to 'student')
 // ──────────────────────────────────────────────────────────────────
+
+// REPLACE the current registerUser function body:
+
 async function registerUser(userData) {
-  const { name, email, password } = userData;
+  const { name, email, password, role } = userData;  // ← destructure role
 
   if (!name || !email || !password) {
     const error = new Error('All fields are required');
     error.statusCode = 400;
     throw error;
   }
+
+  // Validate role — only allow the three known roles
+  const allowedRoles = ['student', 'counsellor', 'admin'];
+  const assignedRole = allowedRoles.includes(role) ? role : 'student';
 
   const existing = await User.findOne({ email });
   if (existing) {
@@ -30,8 +37,8 @@ async function registerUser(userData) {
     name,
     email,
     password:        hashedPassword,
-    role:            'student',
-    profileComplete: false,   // triggers onboarding
+    role:            assignedRole,                        // ← use the actual role
+    profileComplete: assignedRole === 'student' ? false : true,  // ← students need onboarding, staff don't
     tokenVersion:    0,
   };
 
@@ -43,7 +50,15 @@ async function registerUser(userData) {
     session.startTransaction();
     try {
       const [user] = await User.create([newUserData], { session });
-      await StudentDashboard.create([{ userId: user._id }], { session });
+
+      // Only create role-specific dashboard documents where needed
+      if (assignedRole === 'student') {
+        await StudentDashboard.create([{ userId: user._id }], { session });
+      } else if (assignedRole === 'counsellor') {
+        await CounsellorProfile.create([{ userId: user._id }], { session });
+      }
+      // admin gets no extra document
+
       await session.commitTransaction();
       session.endSession();
       return user;
@@ -54,11 +69,14 @@ async function registerUser(userData) {
     }
   } else {
     const user = await User.create(newUserData);
-    await StudentDashboard.create({ userId: user._id });
+    if (assignedRole === 'student') {
+      await StudentDashboard.create({ userId: user._id });
+    } else if (assignedRole === 'counsellor') {
+      await CounsellorProfile.create({ userId: user._id });
+    }
     return user;
   }
 }
-
 // ──────────────────────────────────────────────────────────────────
 // createStaffUser  (admin-only — creates counsellor or admin accounts)
 // ──────────────────────────────────────────────────────────────────
