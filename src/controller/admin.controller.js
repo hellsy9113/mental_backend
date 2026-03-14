@@ -1,26 +1,4 @@
-// const { getAdminData } = require("../services/admin.services");
-
-// async function adminDashBoard(req, res) {
-//   try {
-//     const data = await getAdminData();
-
-//     res.status(200).json({
-//       success: true,
-//       data
-//     });
-//   } catch (error) {
-//     res.status(500).json({
-//       success: false,
-//       message: "Failed to load dashboard"
-//     });
-//   }
-// }
-
-// module.exports = {
-//   adminDashBoard
-// };
-
-
+// src/controller/admin.controller.js
 
 const {
   getAllUsers,
@@ -28,8 +6,11 @@ const {
   updateUserRole,
   deleteUser,
   assignStudentToCounsellor,
-  getPlatformStats
+  unassignStudentFromCounsellor,
+  getPlatformStats,
 } = require('../services/admin.services');
+
+const { createStaffUser } = require('../services/auth.services');
 
 // GET /admin/users?role=student|counsellor|admin
 async function listUsers(req, res) {
@@ -38,10 +19,7 @@ async function listUsers(req, res) {
     const users = await getAllUsers(role);
     res.status(200).json({ success: true, data: users });
   } catch (error) {
-    res.status(error.statusCode || 500).json({
-      success: false,
-      message: error.message || 'Internal server error'
-    });
+    res.status(error.statusCode || 500).json({ success: false, message: error.message || 'Internal server error' });
   }
 }
 
@@ -51,10 +29,20 @@ async function getUser(req, res) {
     const user = await getUserById(req.params.id);
     res.status(200).json({ success: true, data: user });
   } catch (error) {
-    res.status(error.statusCode || 500).json({
-      success: false,
-      message: error.message || 'Internal server error'
-    });
+    res.status(error.statusCode || 500).json({ success: false, message: error.message || 'Internal server error' });
+  }
+}
+
+// POST /admin/users  — create counsellor or admin account
+// Body: { name, email, password, role }
+async function createUser(req, res) {
+  try {
+    const user = await createStaffUser(req.body);
+    // Never return password
+    const { password: _p, ...safe } = user.toObject ? user.toObject() : user;
+    res.status(201).json({ success: true, data: safe });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ success: false, message: error.message || 'Internal server error' });
   }
 }
 
@@ -65,10 +53,7 @@ async function changeUserRole(req, res) {
     const user = await updateUserRole(req.params.id, role);
     res.status(200).json({ success: true, data: user });
   } catch (error) {
-    res.status(error.statusCode || 500).json({
-      success: false,
-      message: error.message || 'Internal server error'
-    });
+    res.status(error.statusCode || 500).json({ success: false, message: error.message || 'Internal server error' });
   }
 }
 
@@ -78,10 +63,7 @@ async function removeUser(req, res) {
     const result = await deleteUser(req.params.id);
     res.status(200).json({ success: true, ...result });
   } catch (error) {
-    res.status(error.statusCode || 500).json({
-      success: false,
-      message: error.message || 'Internal server error'
-    });
+    res.status(error.statusCode || 500).json({ success: false, message: error.message || 'Internal server error' });
   }
 }
 
@@ -93,10 +75,19 @@ async function assignStudent(req, res) {
     const profile = await assignStudentToCounsellor(counsellorId, studentId);
     res.status(200).json({ success: true, data: profile });
   } catch (error) {
-    res.status(error.statusCode || 500).json({
-      success: false,
-      message: error.message || 'Internal server error'
-    });
+    res.status(error.statusCode || 500).json({ success: false, message: error.message || 'Internal server error' });
+  }
+}
+
+// DELETE /admin/assign
+// Body: { counsellorId, studentId }
+async function unassignStudent(req, res) {
+  try {
+    const { counsellorId, studentId } = req.body;
+    const profile = await unassignStudentFromCounsellor(counsellorId, studentId);
+    res.status(200).json({ success: true, data: profile });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({ success: false, message: error.message || 'Internal server error' });
   }
 }
 
@@ -106,18 +97,17 @@ async function platformStats(req, res) {
     const stats = await getPlatformStats();
     res.status(200).json({ success: true, data: stats });
   } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: 'Failed to load platform stats'
-    });
+    res.status(500).json({ success: false, message: 'Failed to load platform stats' });
   }
 }
 
 module.exports = {
   listUsers,
   getUser,
+  createUser,
   changeUserRole,
   removeUser,
   assignStudent,
-  platformStats
+  unassignStudent,
+  platformStats,
 };
