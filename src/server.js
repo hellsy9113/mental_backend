@@ -1,8 +1,10 @@
 require('dotenv').config();
-const app = require('./app');
-const connectDB = require('./config/db');
+const http            = require('http');
+const app             = require('./app');
+const connectDB       = require('./config/db');
+const { initSocket }  = require('./socket');
 
-// Fail fast if critical env vars are missing
+
 if (!process.env.JWT_SECRET) {
   console.error('FATAL: JWT_SECRET is not set in environment variables');
   process.exit(1);
@@ -13,7 +15,16 @@ const PORT = process.env.PORT || 3000;
 (async () => {
   try {
     await connectDB();
-    app.listen(PORT, () => {
+   
+
+    // Create HTTP server from Express app
+    // Must use http.createServer — Socket.io attaches here, not to app directly
+    const server = http.createServer(app);
+
+    // Attach Socket.io signalling to the same HTTP server + port
+    initSocket(server);
+
+    server.listen(PORT, () => {
       console.log(`Server running on http://localhost:${PORT}`);
     });
   } catch (err) {
