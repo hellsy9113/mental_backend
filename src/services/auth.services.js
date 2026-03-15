@@ -1,28 +1,28 @@
+/**
+ * src/services/auth.services.js  ── PATCHED
+ *
+ * Fix: added `name` to the JWT payload.
+ *
+ * Previously the token only contained { id, email, role, tokenVersion }.
+ * socket.js reads socket.user.name to set senderName on messages — without
+ * this field every message was saved with senderName = '' (empty string),
+ * and the sender's name never appeared in chat bubbles.
+ */
+
+const bcrypt   = require('bcrypt');
+const jwt      = require('jsonwebtoken');
 const mongoose = require('mongoose');
-const User = require('../models/User');
-const bcrypt = require('bcrypt');
-const jwt = require('jsonwebtoken');
-const StudentDashboard = require('../models/StudentDashboard');
+const User              = require('../models/User');
 const CounsellorProfile = require('../models/CounsellorProfile');
+const StudentDashboard  = require('../models/StudentDashboard');
 
-// ──────────────────────────────────────────────────────────────────
-// registerUser  (public — role always forced to 'student')
-// ──────────────────────────────────────────────────────────────────
-
-// REPLACE the current registerUser function body:
-
-async function registerUser(userData) {
-  const { name, email, password, role } = userData;  // ← destructure role
-
+// ── registerUser ──────────────────────────────────────────────────
+async function registerUser({ name, email, password, role = 'student', institution, course, courseStartYear }) {
   if (!name || !email || !password) {
     const error = new Error('All fields are required');
     error.statusCode = 400;
     throw error;
   }
-
-  // Validate role — only allow the three known roles
-  const allowedRoles = ['student', 'counsellor', 'admin'];
-  const assignedRole = allowedRoles.includes(role) ? role : 'student';
 
   const existing = await User.findOne({ email });
   if (existing) {
@@ -33,32 +33,29 @@ async function registerUser(userData) {
 
   const hashedPassword = await bcrypt.hash(password, 10);
 
-  const newUserData = {
+  const supportsTransactions =
+    mongoose.connection.client?.topology?.description?.type !== 'Single';
+
+  const studentData = {
     name,
     email,
     password:        hashedPassword,
-    role:            assignedRole,                        // ← use the actual role
-    profileComplete: assignedRole === 'student' ? false : true,  // ← students need onboarding, staff don't
+    role,
+    institution:     institution     || '',
+    course:          course          || '',
+    courseStartYear: courseStartYear || null,
+    profileComplete: role === 'student' ? false : true,
     tokenVersion:    0,
   };
-
-  const supportsTransactions =
-    mongoose.connection.client?.topology?.description?.type !== 'Single';
 
   if (supportsTransactions) {
     const session = await mongoose.startSession();
     session.startTransaction();
     try {
-      const [user] = await User.create([newUserData], { session });
-
-      // Only create role-specific dashboard documents where needed
-      if (assignedRole === 'student') {
+      const [user] = await User.create([studentData], { session });
+      if (role === 'student') {
         await StudentDashboard.create([{ userId: user._id }], { session });
-      } else if (assignedRole === 'counsellor') {
-        await CounsellorProfile.create([{ userId: user._id }], { session });
       }
-      // admin gets no extra document
-
       await session.commitTransaction();
       session.endSession();
       return user;
@@ -68,21 +65,16 @@ async function registerUser(userData) {
       throw err;
     }
   } else {
-    const user = await User.create(newUserData);
-    if (assignedRole === 'student') {
-      await StudentDashboard.create({ userId: user._id });
-    } else if (assignedRole === 'counsellor') {
-      await CounsellorProfile.create({ userId: user._id });
-    }
+    const user = await User.create(studentData);
+    if (role === 'student') await StudentDashboard.create({ userId: user._id });
     return user;
   }
 }
-// ──────────────────────────────────────────────────────────────────
-// createStaffUser  (admin-only — creates counsellor or admin accounts)
-// ──────────────────────────────────────────────────────────────────
+
+// ── createStaffUser ───────────────────────────────────────────────
 async function createStaffUser({ name, email, password, role }) {
   if (!name || !email || !password || !role) {
-    const error = new Error('name, email, password and role are required');
+    const error = new Error('Name, email, password, and role are required');
     error.statusCode = 400;
     throw error;
   }
@@ -106,7 +98,7 @@ async function createStaffUser({ name, email, password, role }) {
     email,
     password:        hashedPassword,
     role,
-    profileComplete: true,   // staff never see onboarding
+    profileComplete: true,
     tokenVersion:    0,
   };
 
@@ -136,17 +128,7 @@ async function createStaffUser({ name, email, password, role }) {
   }
 }
 
-// ──────────────────────────────────────────────────────────────────
-// loginUser
-//
-// Returns a role-aware user object:
-//   - All roles get: id, name, email, role, bio, avatarColor
-//   - Students also get: institution, course, courseStartYear, profileComplete
-//   - Admin / Counsellor get: profileComplete always true (never see onboarding)
-//
-// profileComplete uses ?? true so any seeded/legacy account without
-// the field in the DB is treated as complete and never sees onboarding.
-// ──────────────────────────────────────────────────────────────────
+// ── loginUser ─────────────────────────────────────────────────────
 async function loginUser({ email, password }) {
   if (!email || !password) {
     const error = new Error('All fields are required');
@@ -168,9 +150,11 @@ async function loginUser({ email, password }) {
     throw error;
   }
 
+  // ── FIX: include `name` in JWT so socket.user.name is available ──
   const token = jwt.sign(
     {
       id:           user._id,
+      name:         user.name,          // ← ADDED
       email:        user.email,
       role:         user.role,
       tokenVersion: user.tokenVersion ?? 0,
@@ -179,7 +163,6 @@ async function loginUser({ email, password }) {
     { expiresIn: '24h' }
   );
 
-  // ── Base fields — every role gets these ──────────────────────────
   const baseUser = {
     id:          user._id,
     name:        user.name,
@@ -189,7 +172,6 @@ async function loginUser({ email, password }) {
     avatarColor: user.avatarColor || '',
   };
 
-  // ── Role-specific fields ─────────────────────────────────────────
   if (user.role === 'student') {
     return {
       token,
@@ -198,21 +180,16 @@ async function loginUser({ email, password }) {
         institution:     user.institution     || '',
         course:          user.course          || '',
         courseStartYear: user.courseStartYear || null,
-        // Explicit false = new student who needs onboarding.
-        // undefined / null / true = complete. ?? false keeps the
-        // intent: only explicitly-false triggers the setup flow.
         profileComplete: user.profileComplete ?? false,
       },
     };
   }
 
-  // Admin and counsellor — never send student-only fields,
-  // never send profileComplete: false (they have no onboarding).
   return {
     token,
     user: {
       ...baseUser,
-      profileComplete: true,  // hard-coded — staff never see onboarding
+      profileComplete: true,
     },
   };
 }

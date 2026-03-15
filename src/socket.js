@@ -1,37 +1,34 @@
 /**
- * src/socket.js  ── FULL REPLACEMENT
+ * src/socket.js  ── FIXED
  *
- * Adds DM events (dm:send, dm:message, dm:typing) to the existing
- * video-call signalling server. Nothing existing is changed or removed.
+ * Bug fixes:
  *
- * DM events:
- *   Client → Server:  dm:join   (otherUserId)
- *   Client → Server:  dm:send   { toUserId, text }
- *   Client → Server:  dm:typing { toUserId, isTyping }
+ * 1. DOUBLE MESSAGE
+ *    Root cause: io.to(`user:${toUserId}`) emits dm:message to the recipient's
+ *    personal room. If the recipient has dm:join'd the DM room AND also listens
+ *    on their personal room, they receive the same event twice.
+ *    Fix: separate the two concerns into two different events:
+ *      - dm:message  → delivered via socket.to(dmRoomKey) — DM room only, excludes sender
+ *      - dm:notify   → delivered via io.to(`user:${toUserId}`) — personal room only,
+ *                       used for badge/notification updates, NOT for rendering a bubble
+ *    Frontend listens to dm:message for rendering bubbles, dm:notify for badge counts.
  *
- *   Server → Client:  dm:message  { ...savedMessageDoc }
- *   Server → Client:  dm:typing   { fromUserId, fromName, isTyping }
- *   Server → Client:  dm:error    { message }
- *
- * KEY FIX for double-message bug:
- *   dm:message is emitted with  socket.to(roomKey)  (excludes sender)
- *   AND  io.to(`user:${toUserId}`)  (recipient's personal room).
- *   The SENDER never receives the socket echo — they already have the
- *   optimistic bubble. _id deduplication in the frontend is a safety net.
+ * 2. senderName ALWAYS EMPTY
+ *    Root cause: JWT payload only had { id, email, role, tokenVersion } — no `name`.
+ *    socket.user.name was always undefined → senderName stored as '' in MongoDB.
+ *    Fix: auth.services.js now includes `name` in jwt.sign(). Fallback to role here.
  */
 
 const { Server } = require('socket.io');
 const jwt        = require('jsonwebtoken');
 
-// roomId (Session._id) → Set<socket.id>  — for video call rooms
-const rooms = new Map();
+const rooms = new Map(); // sessionId → Set<socket.id>
 
-// Lazy-require Message model so this file loads even before DB connects
 let Message;
 let saveMessage;
 
 function getModels() {
-  if (!Message)      Message     = require('./models/Message');
+  if (!Message)     Message     = require('./models/Message');
   if (!saveMessage) ({ saveMessage } = require('./services/message.services'));
 }
 
@@ -43,7 +40,6 @@ function initSocket(httpServer) {
     },
   });
 
-  // ── JWT auth middleware ──────────────────────────────────────────
   io.use((socket, next) => {
     const token = socket.handshake.auth?.token;
     if (!token) return next(new Error('No token provided'));
@@ -55,19 +51,17 @@ function initSocket(httpServer) {
     }
   });
 
-  // ── Connection handler ───────────────────────────────────────────
   io.on('connection', (socket) => {
     const { id: userId, role, name } = socket.user;
     console.log(`[Socket] connected — ${role} ${userId}`);
 
-    // Every user auto-joins their personal notification room
+    // Personal notification room — for badge/notify events ONLY
     socket.join(`user:${userId}`);
 
     // ══════════════════════════════════════════════════════════════
-    //  DIRECT MESSAGES  (NEW)
+    //  DIRECT MESSAGES
     // ══════════════════════════════════════════════════════════════
 
-    // dm:join — join the shared DM room so both parties receive updates
     socket.on('dm:join', (otherUserId) => {
       getModels();
       const roomKey = Message.roomKey(userId, otherUserId);
@@ -75,29 +69,31 @@ function initSocket(httpServer) {
       console.log(`[DM] ${role} ${userId} joined ${roomKey}`);
     });
 
-    // dm:send — persist to DB, then relay ONLY to the recipient
-    // (sender already has an optimistic bubble — no echo back to sender)
     socket.on('dm:send', async ({ toUserId, text }) => {
       if (!text?.trim() || !toUserId) return;
       getModels();
 
       try {
-        const message = await saveMessage(userId, role, name, toUserId, text);
-        const payload = message.toObject();
+        const senderName = name || role;
+        const message    = await saveMessage(userId, role, senderName, toUserId, text);
+        const payload    = message.toObject();
+        const dmRoomKey  = Message.roomKey(userId, toUserId);
 
-        // ── Relay to recipient only ──────────────────────────────
-        // socket.to(roomKey) → everyone in the room EXCEPT the sender
-        const roomKey = Message.roomKey(userId, toUserId);
-        socket.to(roomKey).emit('dm:message', payload);
+        // 1. Deliver to recipient if they have the chat open (DM room, excludes sender)
+        socket.to(dmRoomKey).emit('dm:message', payload);
 
-        // Also hit the recipient's personal room in case they're not
-        // in the DM room (e.g. they haven't opened the Messages page yet)
-        io.to(`user:${toUserId}`).emit('dm:message', payload);
+        // 2. Notify recipient's personal room for unread badge — different event!
+        //    Frontend must NOT render a bubble from dm:notify.
+        io.to(`user:${toUserId}`).emit('dm:notify', {
+          fromUserId:   userId,
+          fromName:     senderName,
+          counsellorId: payload.counsellorId?.toString(),
+          studentId:    payload.studentId?.toString(),
+          text:         payload.text,
+          createdAt:    payload.createdAt,
+        });
 
-        // ── Send the real saved doc back to the SENDER only ──────
-        // This replaces the optimistic bubble with the persisted one
-        // (real _id, real createdAt). We tag it so the frontend can
-        // match and replace the opt_ bubble instead of appending.
+        // 3. Confirm to sender with the real persisted doc (has real _id & createdAt)
         socket.emit('dm:message:saved', payload);
 
       } catch (err) {
@@ -106,7 +102,6 @@ function initSocket(httpServer) {
       }
     });
 
-    // dm:typing — relay only, not persisted
     socket.on('dm:typing', ({ toUserId, isTyping }) => {
       io.to(`user:${toUserId}`).emit('dm:typing', {
         fromUserId: userId,
@@ -116,7 +111,7 @@ function initSocket(httpServer) {
     });
 
     // ══════════════════════════════════════════════════════════════
-    //  VIDEO CALL SIGNALLING  (unchanged from original)
+    //  VIDEO CALL SIGNALLING (unchanged)
     // ══════════════════════════════════════════════════════════════
 
     socket.on('join-room', (roomId) => {
@@ -124,20 +119,12 @@ function initSocket(httpServer) {
       if (!rooms.has(roomId)) rooms.set(roomId, new Set());
       rooms.get(roomId).add(socket.id);
       socket.to(roomId).emit('peer-joined', { userId, role, name });
-      console.log(`[Socket] ${role} ${userId} joined room ${roomId} (${rooms.get(roomId).size} members)`);
+      console.log(`[Socket] ${role} ${userId} joined room ${roomId}`);
     });
 
-    socket.on('offer', ({ roomId, sdp }) => {
-      socket.to(roomId).emit('offer', { sdp });
-    });
-
-    socket.on('answer', ({ roomId, sdp }) => {
-      socket.to(roomId).emit('answer', { sdp });
-    });
-
-    socket.on('ice-candidate', ({ roomId, candidate }) => {
-      socket.to(roomId).emit('ice-candidate', { candidate });
-    });
+    socket.on('offer',         ({ roomId, sdp })       => socket.to(roomId).emit('offer', { sdp }));
+    socket.on('answer',        ({ roomId, sdp })       => socket.to(roomId).emit('answer', { sdp }));
+    socket.on('ice-candidate', ({ roomId, candidate }) => socket.to(roomId).emit('ice-candidate', { candidate }));
 
     socket.on('chat-message', ({ roomId, text }) => {
       io.to(roomId).emit('chat-message', {
@@ -153,7 +140,7 @@ function initSocket(httpServer) {
       socket.to(roomId).emit('peer-left');
       rooms.get(roomId)?.delete(socket.id);
       socket.leave(roomId);
-      console.log(`[Socket] ${role} ${userId} left room ${roomId}`);
+      console.log(`[Socket] ${role} ${userId} left ${roomId}`);
     });
 
     socket.on('disconnect', () => {
