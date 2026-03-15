@@ -1,39 +1,19 @@
-// // src/controllers/homepage.controller.js
+/**
+ * src/controller/student.controller.js  ── UPDATED
+ *
+ * Added:
+ *   listStudentSessions   → GET /dashboard/student/sessions
+ *   getAssignedCounsellor → GET /dashboard/student/counsellor
+ */
 
-// const { getStudentDashboard } = require("../services/student.services");
+const {
+  getStudentDashboard,
+  updateStudentDashboard,
+  getStudentSessions,
+  getStudentCounsellor,
+} = require('../services/student.services');
 
-// async function studentDashBoard(req, res) {
-//   try {
-//      if(!req.user || !req.user.id)
-//      {
-//       return res.status(401).json({
-//         message: "Unauthorized access"
-//       });
-//     }
-
-//     const data = await getStudentDashboard(req.user.id);
-
-//     res.status(200).json({
-//       success: true,
-//       data
-//     });
-//   } 
-
-//   catch (error) {
-//     res.status(error.statusCode || 500).json({
-//       message: error.message || "Internal server error"
-//     });
-// }
-// }
-
-// module.exports = {
-//   studentDashBoard
-// };
-
-
-const { getStudentDashboard, updateStudentDashboard } = require('../services/student.services');
-
-// GET /dashboard/student
+/* ── GET /dashboard/student ─────────────────────────────────── */
 async function studentDashBoard(req, res) {
   try {
     const dashboard = await getStudentDashboard(req.user.id);
@@ -41,12 +21,12 @@ async function studentDashBoard(req, res) {
   } catch (error) {
     res.status(error.statusCode || 500).json({
       success: false,
-      message: error.message || 'Internal server error'
+      message: error.message || 'Internal server error',
     });
   }
 }
 
-// PATCH /dashboard/student
+/* ── PATCH /dashboard/student ───────────────────────────────── */
 async function updateDashboard(req, res) {
   try {
     const dashboard = await updateStudentDashboard(req.user.id, req.body);
@@ -54,9 +34,41 @@ async function updateDashboard(req, res) {
   } catch (error) {
     res.status(error.statusCode || 500).json({
       success: false,
-      message: error.message || 'Internal server error'
+      message: error.message || 'Internal server error',
     });
   }
 }
 
-module.exports = { studentDashBoard, updateDashboard };
+/* ── GET /dashboard/student/sessions ────────────────────────── */
+async function listStudentSessions(req, res) {
+  try {
+    const upcoming = req.query.upcoming === 'true';
+    const sessions = await getStudentSessions(req.user.id, { upcoming });
+    res.status(200).json({ success: true, data: sessions });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Internal server error',
+    });
+  }
+}
+
+/* ── GET /dashboard/student/counsellor ──────────────────────── */
+async function getAssignedCounsellor(req, res) {
+  try {
+    const counsellor = await getStudentCounsellor(req.user.id);
+    res.status(200).json({ success: true, data: counsellor });
+  } catch (error) {
+    res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || 'Internal server error',
+    });
+  }
+}
+
+module.exports = {
+  studentDashBoard,
+  updateDashboard,
+  listStudentSessions,
+  getAssignedCounsellor,
+};
