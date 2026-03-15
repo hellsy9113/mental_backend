@@ -15,7 +15,7 @@ async function getProfile(req, res) {
 // PATCH /profile — update name, bio, avatarColor
 async function updateProfile(req, res) {
   try {
-    const allowed = ['name', 'bio', 'avatarColor', 'institution', 'course', 'courseStartYear'];
+    const allowed = ['name', 'bio', 'avatarColor', 'institution', 'course', 'courseStartYear','profileComplete'];
     const updates = {};
     for (const key of allowed) {
       if (req.body[key] !== undefined) updates[key] = req.body[key];
