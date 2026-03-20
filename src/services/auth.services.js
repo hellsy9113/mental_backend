@@ -24,6 +24,12 @@ async function registerUser({ name, email, password, role = 'student', instituti
     throw error;
   }
 
+  if (!['student', 'counsellor', 'admin'].includes(role)) {
+    const error = new Error('Invalid role');
+    error.statusCode = 400;
+    throw error;
+  }
+
   const existing = await User.findOne({ email });
   if (existing) {
     const error = new Error('Email already exists');

@@ -88,5 +88,9 @@ function fetchCloudflareCredentials(tokenId, apiToken) {
     request.end();
   });
 }
+const express = require('express');
+const router = express.Router();
 
-module.exports = { getTurnCredentials };
+router.get('/credentials', getTurnCredentials);
+
+module.exports = router;

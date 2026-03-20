@@ -26,6 +26,7 @@ const journalRoutes    = require('./routes/journal.routes');
 const musicRoutes      = require('./routes/music.routes');
 const volunteerRoutes  = require('./routes/volunteer.routes');
 const messageRoutes    = require('./routes/message.routes');   // ← ADDED
+const turnRoutes       = require('./routes/turn.routes');
 
 app.use("/api/aariv",   aarivRoutes);
 app.use('/auth',        authRoutes);
@@ -38,6 +39,7 @@ app.use('/api/journal', journalRoutes);
 app.use('/api/music',   musicRoutes);
 app.use('/api/volunteer', volunteerRoutes);
 app.use('/messages',    messageRoutes);                        // ← ADDED
+app.use('/api/turn',    turnRoutes);                           // ← ADDED
 
 // Health check
 app.get('/', (req, res) => {

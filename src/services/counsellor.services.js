@@ -12,7 +12,7 @@
  */
 
 //for realtime communication
- const { notifyStudentSessionCreated } = require('../socket');
+ const { notifyStudentSessionCreated, notifySessionUpdated } = require('../socket');
 
 const CounsellorProfile = require('../models/CounsellorProfile');
 const CounsellorNote    = require('../models/CounsellorNote');
@@ -156,7 +156,6 @@ async function createSession(counsellorUserId, data) {
   // Fire-and-forget: if socket is not initialised (e.g. test env) the helper
   // silently no-ops, so this never throws.
   try {
-    const { notifyStudentSessionCreated } = require('../socket');
     notifyStudentSessionCreated(studentId.toString(), {
       _id:             session._id,
       counsellorId:    counsellorUserId,
@@ -188,6 +187,13 @@ async function updateSession(counsellorUserId, sessionId, data) {
   }
 
   await session.save();
+
+  try {
+    notifySessionUpdated(session.studentId.toString(), counsellorUserId.toString(), session.toObject());
+  } catch (err) {
+    // ignore socket notification errors
+  }
+
   return session;
 }
 
@@ -201,6 +207,13 @@ async function deleteSession(counsellorUserId, sessionId) {
 
   session.status = 'cancelled';
   await session.save();
+
+  try {
+    notifySessionUpdated(session.studentId.toString(), counsellorUserId.toString(), session.toObject());
+  } catch (err) {
+    // ignore socket notification errors
+  }
+
   return session;
 }
 

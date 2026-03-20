@@ -1,352 +1,160 @@
-const CounsellorProfile = require('../models/CounsellorProfile');
-const StudentDashboard  = require('../models/StudentDashboard');
-const Session           = require('../models/Session');
-const CounsellorNote    = require('../models/CounsellorNote');
-const User              = require('../models/User');
+const Journal = require('../models/Journal');
 
-/* ────────────────────────────────────────────────────────── */
-/*  PROFILE                                                   */
-/* ────────────────────────────────────────────────────────── */
-
-async function getCounsellorProfile(userId) {
-  const profile = await CounsellorProfile.findOne({ userId })
-    .populate('assignedStudents', 'name email institution createdAt');
-
-  if (!profile) {
-    const err = new Error('Counsellor profile not found');
-    err.statusCode = 404;
+/**
+ * Create a new journal entry for a student.
+ */
+async function createEntry(userId, { title, body, prompt, tags }) {
+  if (!body || !body.trim()) {
+    const err = new Error('Journal body cannot be empty');
+    err.statusCode = 400;
     throw err;
   }
-  return profile;
+
+  const entry = await Journal.create({
+    userId,
+    title: title?.trim() || 'Untitled Entry',
+    body: body.trim(),
+    prompt: prompt || null,
+    tags: Array.isArray(tags) ? tags : []
+  });
+
+  return entry;
 }
 
-async function updateCounsellorProfile(userId, updates) {
-  const allowed = ['bio', 'specialization', 'availability'];
-  const sanitized = {};
-  for (const key of allowed) {
-    if (updates[key] !== undefined) sanitized[key] = updates[key];
+/**
+ * Get all entries for a user, newest first.
+ * Supports optional month/year filter for calendar view.
+ *
+ * @param {string} userId
+ * @param {object} filters  — { year?, month? }  (month is 1-based)
+ */
+async function getEntries(userId, { year, month } = {}) {
+  const query = { userId };
+
+  if (year && month) {
+    const start = new Date(year, month - 1, 1);          // 1st of month
+    const end   = new Date(year, month, 1);               // 1st of next month
+    query.createdAt = { $gte: start, $lt: end };
+  } else if (year) {
+    const start = new Date(year, 0, 1);
+    const end   = new Date(year + 1, 0, 1);
+    query.createdAt = { $gte: start, $lt: end };
   }
 
-  const profile = await CounsellorProfile.findOneAndUpdate(
-    { userId },
-    { $set: sanitized },
-    { new: true, runValidators: true }
-  );
+  const entries = await Journal.find(query)
+    .sort({ createdAt: -1 })
+    .select('_id title body prompt tags wordCount createdAt updatedAt');
 
-  if (!profile) {
-    const err = new Error('Counsellor profile not found');
-    err.statusCode = 404;
-    throw err;
-  }
-  return profile;
+  return entries;
 }
 
-/* ────────────────────────────────────────────────────────── */
-/*  STUDENT DASHBOARD VIEW                                    */
-/* ────────────────────────────────────────────────────────── */
+/**
+ * Get a single entry — ensures ownership.
+ */
+async function getEntryById(userId, entryId) {
+  const entry = await Journal.findOne({ _id: entryId, userId });
 
-async function getAssignedStudentDashboard(counsellorUserId, studentUserId) {
-  const profile = await CounsellorProfile.findOne({ userId: counsellorUserId });
-  if (!profile) {
-    const err = new Error('Counsellor profile not found');
+  if (!entry) {
+    const err = new Error('Journal entry not found');
     err.statusCode = 404;
     throw err;
   }
 
-  const isAssigned = profile.assignedStudents.some(
-    (id) => id.toString() === studentUserId
-  );
-  if (!isAssigned) {
-    const err = new Error('This student is not assigned to you');
-    err.statusCode = 403;
-    throw err;
-  }
-
-  const dashboard = await StudentDashboard.findOne({ userId: studentUserId });
-  if (!dashboard) {
-    const err = new Error('Student dashboard not found');
-    err.statusCode = 404;
-    throw err;
-  }
-
-  // Attach session history for this pair
-  const sessionHistory = await Session.find({
-    counsellorId: counsellorUserId,
-    studentId:    studentUserId
-  })
-    .sort({ scheduledAt: -1 })
-    .limit(10)
-    .select('scheduledAt status durationMinutes type notes');
-
-  return { ...dashboard.toObject(), sessionHistory };
+  return entry;
 }
 
-/* ────────────────────────────────────────────────────────── */
-/*  SESSIONS                                                  */
-/* ────────────────────────────────────────────────────────── */
+/**
+ * Update an existing entry — only title, body, tags are editable.
+ * updatedAt is set automatically by Mongoose timestamps.
+ */
+async function updateEntry(userId, entryId, { title, body, tags }) {
+  const entry = await Journal.findOne({ _id: entryId, userId });
 
-async function getSessions(counsellorUserId, { limit, upcoming, studentId } = {}) {
-  const query = { counsellorId: counsellorUserId };
-  if (upcoming)  query.scheduledAt = { $gte: new Date() };
-  if (studentId) query.studentId   = studentId;
+  if (!entry) {
+    const err = new Error('Journal entry not found');
+    err.statusCode = 404;
+    throw err;
+  }
 
-  let q = Session.find(query)
-    .sort({ scheduledAt: upcoming ? 1 : -1 })
-    .populate('studentId', 'name email');
+  if (title !== undefined) entry.title = title.trim() || 'Untitled Entry';
+  if (body  !== undefined) entry.body  = body.trim();
+  if (tags  !== undefined) entry.tags  = Array.isArray(tags) ? tags : [];
 
-  if (limit) q = q.limit(Number(limit));
+  await entry.save(); // triggers wordCount pre-save hook
 
-  const sessions = await q;
+  return entry;
+}
 
-  // Flatten student name for frontend convenience
-  return sessions.map(s => ({
-    ...s.toObject(),
-    studentName: s.studentId?.name || '—'
+/**
+ * Delete an entry — ensures ownership.
+ */
+async function deleteEntry(userId, entryId) {
+  const result = await Journal.deleteOne({ _id: entryId, userId });
+
+  if (result.deletedCount === 0) {
+    const err = new Error('Journal entry not found');
+    err.statusCode = 404;
+    throw err;
+  }
+}
+
+/**
+ * Calendar summary — returns an array of { date, count, entryIds }
+ * for every day in a given month that has at least one entry.
+ * Used by the frontend calendar to show active days.
+ */
+async function getCalendarSummary(userId, year, month) {
+  const start = new Date(year, month - 1, 1);
+  const end   = new Date(year, month, 1);
+
+  const entries = await Journal.find(
+    { userId, createdAt: { $gte: start, $lt: end } },
+    { _id: 1, title: 1, createdAt: 1 }
+  ).sort({ createdAt: 1 });
+
+  // Group by local calendar date (YYYY-MM-DD)
+  const dayMap = {};
+  for (const e of entries) {
+    const dateKey = e.createdAt.toISOString().slice(0, 10);
+    if (!dayMap[dateKey]) dayMap[dateKey] = { date: dateKey, count: 0, entries: [] };
+    dayMap[dateKey].count += 1;
+    dayMap[dateKey].entries.push({ id: e._id, title: e.title });
+  }
+
+  return Object.values(dayMap);
+}
+
+/**
+ * RAG preparation — returns all entries for a user in a given month
+ * as plain text chunks: { entryId, date, text }
+ * This is the surface the future RAG pipeline will call.
+ */
+async function getMonthlyEntriesForRAG(userId, year, month) {
+  const start = new Date(year, month - 1, 1);
+  const end   = new Date(year, month, 1);
+
+  const entries = await Journal.find(
+    { userId, createdAt: { $gte: start, $lt: end } },
+    { _id: 1, title: 1, body: 1, prompt: 1, tags: 1, createdAt: 1 }
+  ).sort({ createdAt: 1 });
+
+  return entries.map((e) => ({
+    entryId:   e._id,
+    date:      e.createdAt.toISOString().slice(0, 10),
+    title:     e.title,
+    body:      e.body,
+    prompt:    e.prompt,
+    tags:      e.tags,
+    wordCount: e.wordCount
   }));
 }
 
-async function createSession(counsellorUserId, data) {
-  const { studentId, scheduledAt, durationMinutes, type, notes } = data;
-
-  // Ensure student is assigned to this counsellor
-  const profile = await CounsellorProfile.findOne({ userId: counsellorUserId });
-  if (!profile) {
-    const err = new Error('Counsellor profile not found');
-    err.statusCode = 404;
-    throw err;
-  }
-
-  const isAssigned = profile.assignedStudents.some(
-    (id) => id.toString() === studentId
-  );
-  if (!isAssigned) {
-    const err = new Error('Cannot schedule a session with an unassigned student');
-    err.statusCode = 403;
-    throw err;
-  }
-
-  // Fetch counsellor user to get institution
-  const counsellorUser = await User.findById(counsellorUserId).select('institution');
-
-  const session = await Session.create({
-    counsellorId:    counsellorUserId,
-    studentId,
-    institution:     counsellorUser?.institution || '',
-    scheduledAt:     new Date(scheduledAt),
-    durationMinutes: durationMinutes || 50,
-    type:            type || 'video',
-    notes:           notes || '',
-    status:          'scheduled'
-  });
-
-  return session;
-}
-
-async function updateSession(counsellorUserId, sessionId, data) {
-  const session = await Session.findOne({ _id: sessionId, counsellorId: counsellorUserId });
-  if (!session) {
-    const err = new Error('Session not found or access denied');
-    err.statusCode = 404;
-    throw err;
-  }
-
-  const allowed = ['scheduledAt', 'durationMinutes', 'type', 'notes', 'status', 'summary'];
-  for (const key of allowed) {
-    if (data[key] !== undefined) session[key] = data[key];
-  }
-
-  await session.save();
-  return session;
-}
-
-async function deleteSession(counsellorUserId, sessionId) {
-  const session = await Session.findOne({ _id: sessionId, counsellorId: counsellorUserId });
-  if (!session) {
-    const err = new Error('Session not found or access denied');
-    err.statusCode = 404;
-    throw err;
-  }
-  session.status = 'cancelled';
-  await session.save();
-  return session;
-}
-
-/* ────────────────────────────────────────────────────────── */
-/*  NOTES  (private — counsellor eyes only)                   */
-/* ────────────────────────────────────────────────────────── */
-
-async function getNotes(counsellorUserId, studentId) {
-  // Verify assignment first
-  const profile = await CounsellorProfile.findOne({ userId: counsellorUserId });
-  const isAssigned = profile?.assignedStudents.some(
-    id => id.toString() === studentId
-  );
-  if (!isAssigned) {
-    const err = new Error('Access denied');
-    err.statusCode = 403;
-    throw err;
-  }
-
-  return CounsellorNote.find({ counsellorId: counsellorUserId, studentId })
-    .sort({ updatedAt: -1 });
-}
-
-async function createNote(counsellorUserId, { studentId, title, content }) {
-  // Verify assignment
-  const profile = await CounsellorProfile.findOne({ userId: counsellorUserId });
-  const isAssigned = profile?.assignedStudents.some(
-    id => id.toString() === studentId
-  );
-  if (!isAssigned) {
-    const err = new Error('Access denied');
-    err.statusCode = 403;
-    throw err;
-  }
-
-  return CounsellorNote.create({
-    counsellorId: counsellorUserId,
-    studentId,
-    title:   title   || '',
-    content: content || ''
-  });
-}
-
-async function updateNote(counsellorUserId, noteId, { title, content }) {
-  const note = await CounsellorNote.findOne({ _id: noteId, counsellorId: counsellorUserId });
-  if (!note) {
-    const err = new Error('Note not found');
-    err.statusCode = 404;
-    throw err;
-  }
-  if (title   !== undefined) note.title   = title;
-  if (content !== undefined) note.content = content;
-  await note.save();
-  return note;
-}
-
-async function deleteNote(counsellorUserId, noteId) {
-  const note = await CounsellorNote.findOne({ _id: noteId, counsellorId: counsellorUserId });
-  if (!note) {
-    const err = new Error('Note not found');
-    err.statusCode = 404;
-    throw err;
-  }
-  await note.deleteOne();
-  return { message: 'Note deleted' };
-}
-
-/* ────────────────────────────────────────────────────────── */
-/*  ANALYTICS  (institution-scoped, admin-linkable)           */
-/* ────────────────────────────────────────────────────────── */
-
-async function getAnalytics(counsellorUserId) {
-  const profile = await CounsellorProfile.findOne({ userId: counsellorUserId })
-    .populate('assignedStudents', '_id');
-
-  if (!profile) {
-    const err = new Error('Counsellor profile not found');
-    err.statusCode = 404;
-    throw err;
-  }
-
-  const studentIds = profile.assignedStudents.map(s => s._id);
-  const totalStudents = studentIds.length;
-
-  // Fetch all dashboards for assigned students
-  const dashboards = await StudentDashboard.find({ userId: { $in: studentIds } });
-
-  // Mood distribution
-  let goodCount = 0, fairCount = 0, lowCount = 0;
-  let moodTotal = 0, moodCount = 0;
-  const atRiskList = [];
-
-  for (const d of dashboards) {
-    const score = d.mentalStats?.moodScore;
-    if (score != null) {
-      moodTotal += score;
-      moodCount++;
-      if (score >= 7)      goodCount++;
-      else if (score >= 4) fairCount++;
-      else                 lowCount++;
-
-      if (score < 4) {
-        const user = await User.findById(d.userId).select('name');
-        atRiskList.push({
-          name:        user?.name || '—',
-          moodScore:   score,
-          stressLevel: d.mentalStats?.stressLevel,
-          lastCheckIn: d.mentalStats?.lastCheckIn,
-          flagReason:  'Low mood score'
-        });
-      }
-    }
-  }
-
-  const avgMoodScore = moodCount > 0 ? moodTotal / moodCount : null;
-
-  // Session stats
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-  const [allSessions, monthlySessions] = await Promise.all([
-    Session.find({ counsellorId: counsellorUserId }),
-    Session.find({ counsellorId: counsellorUserId, scheduledAt: { $gte: monthStart } })
-  ]);
-
-  const completedSessions = allSessions.filter(s => s.status === 'completed').length;
-  const completionRate    = allSessions.length
-    ? Math.round((completedSessions / allSessions.length) * 100)
-    : 0;
-
-  // Session type breakdown
-  const sessionTypeBreakdown = {};
-  for (const s of allSessions) {
-    sessionTypeBreakdown[s.type || 'video'] = (sessionTypeBreakdown[s.type || 'video'] || 0) + 1;
-  }
-
-  // Weekly volume — last 8 weeks
-  const weeklySessionVolume = [];
-  for (let i = 7; i >= 0; i--) {
-    const weekStart = new Date(now);
-    weekStart.setDate(now.getDate() - i * 7);
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 7);
-
-    const count = allSessions.filter(s => {
-      const d = new Date(s.scheduledAt);
-      return d >= weekStart && d < weekEnd;
-    }).length;
-
-    weeklySessionVolume.push({
-      label: `W${8 - i}`,
-      value: count
-    });
-  }
-
-  return {
-    totalStudents,
-    avgMoodScore,
-    atRiskStudents:          atRiskList.length,
-    atRiskList,
-    completionRate,
-    totalSessionsThisMonth:  monthlySessions.length,
-    weeklySessionVolume,
-    sessionTypeBreakdown,
-    moodDistribution: { good: goodCount, fair: fairCount, low: lowCount }
-  };
-}
-
 module.exports = {
-  getCounsellorProfile,
-  updateCounsellorProfile,
-  getAssignedStudentDashboard,
-  getSessions,
-  createSession,
-  updateSession,
-  deleteSession,
-  getNotes,
-  createNote,
-  updateNote,
-  deleteNote,
-  getAnalytics
+  createEntry,
+  getEntries,
+  getEntryById,
+  updateEntry,
+  deleteEntry,
+  getCalendarSummary,
+  getMonthlyEntriesForRAG
 };
