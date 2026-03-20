@@ -11,6 +11,9 @@
  *   Analytics : getAnalytics
  */
 
+//for realtime communication
+ const { notifyStudentSessionCreated } = require('../socket');
+
 const CounsellorProfile = require('../models/CounsellorProfile');
 const CounsellorNote    = require('../models/CounsellorNote');
 const StudentDashboard  = require('../models/StudentDashboard');
@@ -119,14 +122,14 @@ async function getSessions(counsellorUserId, { limit, upcoming, studentId } = {}
 
 async function createSession(counsellorUserId, data) {
   const { studentId, scheduledAt, durationMinutes, type, notes } = data;
-
+ 
   const profile = await CounsellorProfile.findOne({ userId: counsellorUserId });
   if (!profile) {
     const err = new Error('Counsellor profile not found');
     err.statusCode = 404;
     throw err;
   }
-
+ 
   const isAssigned = profile.assignedStudents.some(
     id => id.toString() === studentId
   );
@@ -135,10 +138,10 @@ async function createSession(counsellorUserId, data) {
     err.statusCode = 403;
     throw err;
   }
-
-  const counsellorUser = await User.findById(counsellorUserId).select('institution');
-
-  return Session.create({
+ 
+  const counsellorUser = await User.findById(counsellorUserId).select('name institution');
+ 
+  const session = await Session.create({
     counsellorId:    counsellorUserId,
     studentId,
     institution:     counsellorUser?.institution || '',
@@ -148,6 +151,27 @@ async function createSession(counsellorUserId, data) {
     notes:           notes           || '',
     status:          'scheduled',
   });
+ 
+  // ── Real-time notification to student ─────────────────────────────────────
+  // Fire-and-forget: if socket is not initialised (e.g. test env) the helper
+  // silently no-ops, so this never throws.
+  try {
+    const { notifyStudentSessionCreated } = require('../socket');
+    notifyStudentSessionCreated(studentId.toString(), {
+      _id:             session._id,
+      counsellorId:    counsellorUserId,
+      counsellorName:  counsellorUser?.name || 'Your Counsellor',
+      scheduledAt:     session.scheduledAt,
+      durationMinutes: session.durationMinutes,
+      type:            session.type,
+      notes:           session.notes,
+      status:          session.status,
+    });
+  } catch {
+    // socket module not available in some environments — ignore
+  }
+ 
+  return session;
 }
 
 async function updateSession(counsellorUserId, sessionId, data) {
