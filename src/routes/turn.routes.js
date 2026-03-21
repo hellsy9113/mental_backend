@@ -1,22 +1,23 @@
 /**
- * src/controller/turn.controller.js
+ * src/routes/turn.routes.js
  *
  * Fetches short-lived TURN credentials from Cloudflare Calls API.
  * Cloudflare docs: https://developers.cloudflare.com/calls/turn/
- *
- * Required env vars:
- *   CF_TURN_TOKEN_ID   — your Cloudflare TURN token ID
- *   CF_TURN_API_TOKEN  — your Cloudflare TURN API token
  */
 
 const https = require('https');
+const express = require('express');
+const router = express.Router();
 
+/**
+ * Returns an array of RTCIceServer objects ready for use in RTCPeerConnection.
+ */
 async function getTurnCredentials(req, res) {
-  const tokenId  = process.env.CF_TURN_TOKEN_ID;
+  const tokenId  = process.env.CF_TURN_TOKEN_ID || process.env.CF_TURN_KEY_ID;
   const apiToken = process.env.CF_TURN_API_TOKEN;
 
+  // 1. Check for missing ENV vars
   if (!tokenId || !apiToken) {
-    // Fallback: return only STUN so the app still works without TURN configured
     console.warn('[TURN] CF_TURN_TOKEN_ID or CF_TURN_API_TOKEN not set — returning STUN only');
     return res.json({
       success: true,
@@ -28,17 +29,24 @@ async function getTurnCredentials(req, res) {
   }
 
   try {
-    // Call Cloudflare Calls TURN REST API
+    // 2. Fetch from Cloudflare REST API
     const cfResponse = await fetchCloudflareCredentials(tokenId, apiToken);
 
-    // Cloudflare returns: { iceServers: [...] }
-    return res.json({
-      success: true,
-      iceServers: cfResponse.iceServers,
-    });
+    // 3. Cloudflare returns: { iceServers: [...] }
+    // BUT we must verify it's actually there to avoid the .map error in frontend
+    if (cfResponse && Array.isArray(cfResponse.iceServers)) {
+      console.log('[TURN] Cloudflare credentials fetched successfully');
+      return res.json({
+        success: true,
+        iceServers: cfResponse.iceServers,
+      });
+    }
+
+    throw new Error('Cloudflare response did not contain iceServers array');
   } catch (err) {
     console.error('[TURN] Failed to fetch Cloudflare credentials:', err.message);
-    // Graceful fallback — call still works over relay-less STUN
+    
+    // 4. Graceful Fallback (STUN only)
     return res.json({
       success: true,
       iceServers: [
@@ -50,8 +58,7 @@ async function getTurnCredentials(req, res) {
 }
 
 /**
- * POST https://rtc.live.cloudflare.com/v1/turn/keys/{tokenId}/credentials/generate
- * Body: { ttl: 86400 }  — 24 h is the max; use shorter for production
+ * Post request to Cloudflare TURN credentials endpoint
  */
 function fetchCloudflareCredentials(tokenId, apiToken) {
   return new Promise((resolve, reject) => {
@@ -59,7 +66,8 @@ function fetchCloudflareCredentials(tokenId, apiToken) {
 
     const options = {
       hostname: 'rtc.live.cloudflare.com',
-      path:     `/v1/turn/keys/${tokenId}/credentials/generate`,
+      // Cloudflare standard endpoint
+      path:     `/v1/turn/keys/${tokenId}/credentials/generate`, 
       method:   'POST',
       headers: {
         'Authorization': `Bearer ${apiToken}`,
@@ -73,8 +81,8 @@ function fetchCloudflareCredentials(tokenId, apiToken) {
       response.on('data', chunk => { data += chunk; });
       response.on('end', () => {
         try {
-          if (response.statusCode !== 200 && response.statusCode !== 201) {
-            return reject(new Error(`Cloudflare returned ${response.statusCode}: ${data}`));
+          if (response.statusCode >= 400) {
+            return reject(new Error(`Cloudflare status ${response.statusCode}: ${data}`));
           }
           resolve(JSON.parse(data));
         } catch (e) {
@@ -88,8 +96,6 @@ function fetchCloudflareCredentials(tokenId, apiToken) {
     request.end();
   });
 }
-const express = require('express');
-const router = express.Router();
 
 router.get('/credentials', getTurnCredentials);
 
