@@ -42,18 +42,22 @@ async function resolveParticipants(callerId, callerRole, otherUserId) {
 
   if (callerRole === 'counsellor') {
     if (other.role !== 'student') {
-      const err = new Error('You can only message your assigned students');
+      const err = new Error('You can only message students or volunteers assigned to you');
       err.statusCode = 403;
       throw err;
     }
 
-    // Verify this student is actually assigned to the counsellor
+    // Verify this student/volunteer is actually assigned to the counsellor
     const profile = await CounsellorProfile.findOne({ userId: callerId });
-    const isAssigned = profile?.assignedStudents?.some(
+    const isAssignedStudent = profile?.assignedStudents?.some(
       id => id.toString() === otherUserId.toString()
     );
-    if (!isAssigned) {
-      const err = new Error('This student is not assigned to you');
+    const isAssignedVolunteer = profile?.assignedVolunteers?.some(
+      id => id.toString() === otherUserId.toString()
+    );
+
+    if (!isAssignedStudent && !isAssignedVolunteer) {
+      const err = new Error('This user is not assigned to you');
       err.statusCode = 403;
       throw err;
     }
@@ -63,7 +67,7 @@ async function resolveParticipants(callerId, callerRole, otherUserId) {
 
   if (callerRole === 'student') {
     if (other.role !== 'counsellor') {
-      const err = new Error('You can only message your assigned counsellor');
+      const err = new Error('You can only message counsellors');
       err.statusCode = 403;
       throw err;
     }

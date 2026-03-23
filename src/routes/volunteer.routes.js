@@ -5,9 +5,11 @@ const {
   withdraw,
   list,
   getOne,
-  review
+  assign,
+  cReview,
+  remove
 } = require('../controller/volunteer.controller');
-const { verifyToken, isStudent, isAdmin } = require('../middleware/auth.middleware');
+const { verifyToken, isStudent, isAdmin, isCounsellor } = require('../middleware/auth.middleware');
 
 const router = express.Router();
 
@@ -21,14 +23,23 @@ router.get('/me', verifyToken, isStudent, getMyApp);
 // DELETE /api/volunteer/me
 router.delete('/me', verifyToken, isStudent, withdraw);
 
-// Admin routes
-// GET /api/volunteer/admin/applications
-router.get('/admin/applications', verifyToken, isAdmin, list);
+// Shared / Admin / Counsellor routes
+// GET /api/volunteer/admin/applications (Admin & Counsellor can list)
+router.get('/admin/applications', verifyToken, list);
 
-// GET /api/volunteer/admin/applications/:id
-router.get('/admin/applications/:id', verifyToken, isAdmin, getOne);
+// GET /api/volunteer/admin/applications/:id (Admin & Counsellor can view)
+router.get('/admin/applications/:id', verifyToken, getOne);
 
-// PATCH /api/volunteer/admin/applications/:id/review
-router.patch('/admin/applications/:id/review', verifyToken, isAdmin, review);
+// Admin only routes
+// PATCH /api/volunteer/admin/assign/:id
+router.patch('/admin/assign/:id', verifyToken, isAdmin, assign);
+
+// Counsellor only routes
+// PATCH /api/volunteer/counsellor/review/:id
+router.patch('/counsellor/review/:id', verifyToken, isCounsellor, cReview);
+
+// Removal route (Admin or assigned Counsellor)
+// DELETE /api/volunteer/remove/:id
+router.delete('/remove/:id', verifyToken, remove);
 
 module.exports = router;

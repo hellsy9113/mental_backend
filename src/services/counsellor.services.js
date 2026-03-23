@@ -26,7 +26,8 @@ const User              = require('../models/User');
 
 async function getCounsellorProfile(userId) {
   const profile = await CounsellorProfile.findOne({ userId })
-    .populate('assignedStudents', 'name email institution course createdAt');
+    .populate('assignedStudents', 'name email institution course createdAt')
+    .populate('assignedVolunteers',  'name email');
 
   if (!profile) {
     const err = new Error('Counsellor profile not found');
