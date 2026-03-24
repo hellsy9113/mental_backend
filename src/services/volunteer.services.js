@@ -1,12 +1,16 @@
 // src/services/volunteer.services.js
 const VolunteerApplication = require('../models/VolunteerApplication');
+const CounsellorProfile = require('../models/CounsellorProfile');
 
 // ── Student: Submit application ────────────────────────────────────────────
 async function submitApplication(userId, body) {
-  // Prevent duplicate pending applications
-  const existing = await VolunteerApplication.findOne({ userId, status: 'pending' });
+  // Prevent duplicate pending/assigned applications
+  const existing = await VolunteerApplication.findOne({ 
+    userId, 
+    status: { $in: ['pending', 'assigned'] } 
+  });
   if (existing) {
-    const error = new Error('You already have a pending volunteer application');
+    const error = new Error('You already have an active volunteer application');
     error.statusCode = 409;
     throw error;
   }
@@ -28,9 +32,13 @@ async function getMyApplication(userId) {
 
 // ── Student: Withdraw pending application ─────────────────────────────────
 async function withdrawApplication(userId) {
-  const application = await VolunteerApplication.findOne({ userId, status: 'pending' });
+  // Only allow withdrawal if not yet approved/rejected
+  const application = await VolunteerApplication.findOne({ 
+    userId, 
+    status: { $in: ['pending', 'assigned'] } 
+  });
   if (!application) {
-    const error = new Error('No pending application to withdraw');
+    const error = new Error('No active application to withdraw');
     error.statusCode = 404;
     throw error;
   }
@@ -43,13 +51,16 @@ async function listApplications(status) {
   const filter = status ? { status } : {};
   const applications = await VolunteerApplication.find(filter)
     .populate('userId', 'name email')
+    .populate('assignedCounsellorId', 'name email')
     .sort({ createdAt: -1 });
   return applications;
 }
 
 // ── Admin: Get single application by ID ───────────────────────────────────
 async function getApplicationById(id) {
-  const application = await VolunteerApplication.findById(id).populate('userId', 'name email');
+  const application = await VolunteerApplication.findById(id)
+    .populate('userId', 'name email')
+    .populate('assignedCounsellorId', 'name email');
   if (!application) {
     const error = new Error('Application not found');
     error.statusCode = 404;
@@ -58,8 +69,39 @@ async function getApplicationById(id) {
   return application;
 }
 
-// ── Admin: Review (approve / reject) application ──────────────────────────
-async function reviewApplication(id, adminId, { status, adminNotes }) {
+// ── Admin: Assign to Counsellor ──────────────────────────────────────────
+async function assignToCounsellor(id, adminId, { assignedCounsellorId, adminNotes }) {
+  if (!assignedCounsellorId) {
+    const error = new Error('assignedCounsellorId is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const application = await VolunteerApplication.findById(id);
+  if (!application) {
+    const error = new Error('Application not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (application.status !== 'pending') {
+    const error = new Error(`Application is in ${application.status} state, cannot assign`);
+    error.statusCode = 409;
+    throw error;
+  }
+
+  application.status = 'assigned';
+  application.assignedCounsellorId = assignedCounsellorId;
+  application.reviewedBy = adminId;
+  application.reviewedAt = new Date();
+  if (adminNotes) application.adminNotes = adminNotes;
+
+  await application.save();
+  return application;
+}
+
+// ── Counsellor: Review (approve / reject) application ──────────────────────────
+async function counsellorReview(id, counsellorId, { status, adminNotes }) {
   const VALID = ['approved', 'rejected'];
   if (!VALID.includes(status)) {
     const error = new Error('Status must be "approved" or "rejected"');
@@ -74,19 +116,64 @@ async function reviewApplication(id, adminId, { status, adminNotes }) {
     throw error;
   }
 
-  if (application.status !== 'pending') {
-    const error = new Error(`Application has already been ${application.status}`);
+  if (application.status !== 'assigned') {
+    const error = new Error('Application is not assigned to any counsellor');
     error.statusCode = 409;
     throw error;
   }
 
-  application.status     = status;
-  application.reviewedBy = adminId;
-  application.reviewedAt = new Date();
-  application.adminNotes = adminNotes || '';
+  if (application.assignedCounsellorId.toString() !== counsellorId.toString()) {
+    const error = new Error('This application is assigned to a different counsellor');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  application.status = status;
+  if (adminNotes) application.adminNotes = adminNotes;
+
+  if (status === 'approved') {
+    // Add to counsellor's assignedVolunteers
+    await CounsellorProfile.findOneAndUpdate(
+      { userId: counsellorId },
+      { $addToSet: { assignedVolunteers: application.userId } },
+      { upsert: true }
+    );
+  }
 
   await application.save();
   return application;
+}
+
+// ── Admin / Counsellor: Remove Volunteer ────────────────────────────────────
+async function removeVolunteer(appId, userId, userRole) {
+  const application = await VolunteerApplication.findById(appId);
+  if (!application || application.status !== 'approved') {
+    const error = new Error('Approved volunteer application not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // Permission check: Admin can always remove. Counsellor can only if they approved it.
+  if (userRole !== 'admin') {
+    if (application.assignedCounsellorId.toString() !== userId.toString()) {
+      const error = new Error('You do not have permission to remove this volunteer');
+      error.statusCode = 403;
+      throw error;
+    }
+  }
+
+  // Remove from CounsellorProfile
+  await CounsellorProfile.updateOne(
+    { userId: application.assignedCounsellorId },
+    { $pull: { assignedVolunteers: application.userId } }
+  );
+
+  // Set status back to rejected or specifically 'removed'
+  application.status = 'rejected';
+  application.adminNotes = `Removed by ${userRole} on ${new Date().toLocaleDateString()}`;
+  await application.save();
+
+  return { message: 'Volunteer removed successfully' };
 }
 
 module.exports = {
@@ -95,5 +182,7 @@ module.exports = {
   withdrawApplication,
   listApplications,
   getApplicationById,
-  reviewApplication
+  assignToCounsellor,
+  counsellorReview,
+  removeVolunteer
 };

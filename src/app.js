@@ -29,17 +29,17 @@ const messageRoutes    = require('./routes/message.routes');   // ← ADDED
 const turnRoutes       = require('./routes/turn.routes');
 
 app.use("/api/aariv",   aarivRoutes);
-app.use('/auth',        authRoutes);
-app.use('/dashboard',   studentRoutes);
-app.use('/admin',       adminRoutes);
-app.use('/counsellor',  counsellorRoutes);
+app.use('/api/auth',    authRoutes);
+app.use('/api/dashboard', studentRoutes);
+app.use('/api/admin',   adminRoutes);
+app.use('/api/counsellor', counsellorRoutes);
 app.use('/api/mood',    moodRoutes);
-app.use('/profile',     profileRoutes);
+app.use('/api/profile',  profileRoutes);
 app.use('/api/journal', journalRoutes);
 app.use('/api/music',   musicRoutes);
 app.use('/api/volunteer', volunteerRoutes);
-app.use('/messages',    messageRoutes);                        // ← ADDED
-app.use('/api/turn',    turnRoutes);                           // ← ADDED
+app.use('/api/messages', messageRoutes);
+app.use('/api/turn',    turnRoutes);
 
 // Health check
 app.get('/', (req, res) => {

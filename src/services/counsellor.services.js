@@ -26,7 +26,8 @@ const User              = require('../models/User');
 
 async function getCounsellorProfile(userId) {
   const profile = await CounsellorProfile.findOne({ userId })
-    .populate('assignedStudents', 'name email institution course createdAt');
+    .populate('assignedStudents', 'name email institution course createdAt')
+    .populate('assignedVolunteers',  'name email');
 
   if (!profile) {
     const err = new Error('Counsellor profile not found');
@@ -57,6 +58,8 @@ async function updateCounsellorProfile(userId, updates) {
   return profile;
 }
 
+const Mood              = require('../models/Mood');
+
 /* ──────────────────────────────────────────────────────────────
    STUDENT DASHBOARD VIEW
    ────────────────────────────────────────────────────────────── */
@@ -85,6 +88,17 @@ async function getAssignedStudentDashboard(counsellorUserId, studentUserId) {
     throw err;
   }
 
+  // Fetch last 7 mood entries for the trend
+  const moodHistory = await Mood.find({ userId: studentUserId })
+    .sort({ date: -1 })
+    .limit(7);
+  
+  // Chronological order for the chart (oldest first)
+  const history = moodHistory.reverse().map(m => ({
+    moodScore: m.moodScore,
+    date: m.date
+  }));
+
   // Attach session history for this counsellor–student pair
   const sessionHistory = await Session.find({
     counsellorId: counsellorUserId,
@@ -94,7 +108,11 @@ async function getAssignedStudentDashboard(counsellorUserId, studentUserId) {
     .limit(10)
     .select('scheduledAt status durationMinutes type notes');
 
-  return { ...dashboard.toObject(), sessionHistory };
+  const dashboardObj = dashboard.toObject();
+  if (!dashboardObj.mentalStats) dashboardObj.mentalStats = {};
+  dashboardObj.mentalStats.history = history;
+
+  return { ...dashboardObj, sessionHistory };
 }
 
 /* ──────────────────────────────────────────────────────────────

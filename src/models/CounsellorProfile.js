@@ -27,6 +27,14 @@ const counsellorProfileSchema = new mongoose.Schema(
       }
     ],
 
+    // Volunteers assigned to this counsellor
+    assignedVolunteers: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+      }
+    ],
+
     // Availability slots e.g. [{ day: 'Monday', startTime: '10:00', endTime: '12:00' }]
     availability: [
       {

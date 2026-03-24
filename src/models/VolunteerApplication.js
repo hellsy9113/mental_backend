@@ -184,11 +184,18 @@ const volunteerApplicationSchema = new mongoose.Schema(
       }
     },
 
-    // ── Application Status (managed by admin) ─────────────────────────────
+    // ── Application Status (managed by admin/counsellor) ─────────────────────
     status: {
       type: String,
-      enum: ['pending', 'approved', 'rejected'],
+      enum: ['pending', 'assigned', 'approved', 'rejected'],
       default: 'pending',
+      index: true
+    },
+
+    assignedCounsellorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
       index: true
     },
 
