@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config(); 
 const http            = require('http');
 const app             = require('./app');
 const connectDB       = require('./config/db');
@@ -10,10 +10,14 @@ if (!process.env.JWT_SECRET) {
   process.exit(1);
 }
 
+const fs = require('fs');
+fs.appendFileSync('startup.log', `[${new Date().toISOString()}] Server process start. MONGO_URL ENV: ${process.env.MONGO_URL ? 'PRESENT' : 'MISSING'}\n`);
 const PORT = process.env.PORT || 3000;
 
 (async () => {
   try {
+    const maskedUri = process.env.MONGO_URL ? process.env.MONGO_URL.replace(/:([^@]+)@/, ':****@') : 'MISSING';
+    console.log(`Starting server with MONGO_URL: ${maskedUri}`);
     await connectDB();
    
 

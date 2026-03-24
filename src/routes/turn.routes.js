@@ -7,7 +7,11 @@
 
 const https = require('https');
 const express = require('express');
+const { verifyToken } = require('../middleware/auth.middleware');
 const router = express.Router();
+
+// TURN credentials should only be issued to authenticated users
+router.use(verifyToken);
 
 /**
  * Returns an array of RTCIceServer objects ready for use in RTCPeerConnection.
