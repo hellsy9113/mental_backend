@@ -29,6 +29,8 @@ const volunteerRoutes  = require('./routes/volunteer.routes');
 const messageRoutes    = require('./routes/message.routes');   // ← ADDED
 const turnRoutes       = require('./routes/turn.routes');
 
+const assessmentRoutes = require('./routes/assessment.routes');
+
 app.use("/api/aariv",   aarivRoutes);
 app.use('/api/auth',    authRoutes);
 app.use('/api/dashboard', studentRoutes);
@@ -41,6 +43,7 @@ app.use('/api/music',   musicRoutes);
 app.use('/api/volunteer', volunteerRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/turn',    turnRoutes);
+app.use('/api/assessment', assessmentRoutes);
 
 // Health check
 app.get('/', (req, res) => {
