@@ -30,6 +30,7 @@ const messageRoutes    = require('./routes/message.routes');   // ← ADDED
 const turnRoutes       = require('./routes/turn.routes');
 
 const assessmentRoutes = require('./routes/assessment.routes');
+const ragRoutes        = require('./routes/rag.routes');
 
 app.use("/api/aariv",   aarivRoutes);
 app.use('/api/auth',    authRoutes);
@@ -44,6 +45,7 @@ app.use('/api/volunteer', volunteerRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/turn',    turnRoutes);
 app.use('/api/assessment', assessmentRoutes);
+app.use('/api/rag', ragRoutes);
 
 // Health check
 app.get('/', (req, res) => {

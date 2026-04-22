@@ -20,6 +20,9 @@ const PORT = process.env.PORT || 3000;
     console.log(`Starting server with MONGO_URL: ${maskedUri}`);
     await connectDB();
    
+    // Start the RAG Vector Ingestion Background Worker
+    const { startWorkerInterval } = require('./services/ragWorker.service');
+    startWorkerInterval();
 
     // Create HTTP server from Express app
     // Must use http.createServer — Socket.io attaches here, not to app directly
