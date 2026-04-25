@@ -1,24 +1,36 @@
 const ChatLog = require("../models/aarivChatModel.js");
 const { generateAarivResponse } = require("../services/aariv.services.js");
 
+const MAX_MESSAGE_LENGTH = 2000; // cap to prevent unbounded Gemini API cost
+
 const chatWithAariv = async (req, res) => {
   try {
-    const { userId, sessionId, message } = req.body;
+    const userId = req.user.id; // ✅ from verified JWT — not from req.body (IDOR fix)
+    const { sessionId, message } = req.body;
 
-    const result = await generateAarivResponse(userId, sessionId, message);
+    if (!message || typeof message !== "string" || !message.trim()) {
+      return res.status(400).json({ success: false, error: "Message is required." });
+    }
+    if (message.length > MAX_MESSAGE_LENGTH) {
+      return res.status(400).json({ success: false, error: `Message must be under ${MAX_MESSAGE_LENGTH} characters.` });
+    }
+    if (!sessionId) {
+      return res.status(400).json({ success: false, error: "sessionId is required." });
+    }
+
+    const result = await generateAarivResponse(userId, sessionId, message.trim());
 
     await ChatLog.create({
       userId,
       sessionId,
-      userMessage: message,
+      userMessage: message.trim(),
       botResponse: result.response,
       isHighRisk: result.isHighRisk,
     });
 
     res.json(result);
   } catch (error) {
-    console.error(error);
-
+    console.error("[Aariv] chatWithAariv error:", error);
     res.json({
       isHighRisk: false,
       response: "I'm here with you. Tell me more.",
@@ -28,20 +40,20 @@ const chatWithAariv = async (req, res) => {
 
 const getChatHistory = async (req, res) => {
   try {
+    const userId = req.user.id; // ✅ IDOR fix
     const { sessionId } = req.params;
-    const { userId } = req.query; // Assuming userId is passed as query param for now
 
     const history = await ChatLog.find({ userId, sessionId }).sort({ createdAt: 1 });
     res.json(history);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Failed to fetch chat history" });
+    console.error("[Aariv] getChatHistory error:", error);
+    res.status(500).json({ error: "Failed to fetch chat history." });
   }
 };
 
 const getRecentSessions = async (req, res) => {
   try {
-    const { userId } = req.query;
+    const userId = req.user.id; // ✅ IDOR fix
 
     const sessions = await ChatLog.aggregate([
       { $match: { userId } },
@@ -58,21 +70,21 @@ const getRecentSessions = async (req, res) => {
 
     res.json(sessions);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Failed to fetch sessions" });
+    console.error("[Aariv] getRecentSessions error:", error);
+    res.status(500).json({ error: "Failed to fetch sessions." });
   }
 };
 
 const deleteChatSession = async (req, res) => {
   try {
+    const userId = req.user.id; // ✅ IDOR fix
     const { sessionId } = req.params;
-    const { userId } = req.query;
 
     await ChatLog.deleteMany({ userId, sessionId });
-    res.json({ message: "Chat session deleted successfully" });
+    res.json({ message: "Chat session deleted successfully." });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: "Failed to delete chat session" });
+    console.error("[Aariv] deleteChatSession error:", error);
+    res.status(500).json({ error: "Failed to delete chat session." });
   }
 };
 

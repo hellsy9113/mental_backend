@@ -16,9 +16,11 @@ const addMood = async (req, res) => {
       data: mood,
     });
   } catch (error) {
-    res.status(500).json({
+    console.error('[mood] addMood error:', error);
+    const statusCode = error.statusCode || 500;
+    res.status(statusCode).json({
       success: false,
-      message: error.message,
+      message: statusCode < 500 ? error.message : 'An internal error occurred.',
     });
   }
 };
@@ -32,9 +34,11 @@ const getMoodStatistics = async (req, res) => {
       data: stats,
     });
   } catch (error) {
-    res.status(500).json({
+    console.error('[mood] getMoodStatistics error:', error);
+    const statusCode = error.statusCode || 500;
+    res.status(statusCode).json({
       success: false,
-      message: error.message,
+      message: statusCode < 500 ? error.message : 'An internal error occurred.',
     });
   }
 };
@@ -52,7 +56,8 @@ const getWeeklyBreakdown = async (req, res) => {
     const breakdown = await moodService.getWeeklyBreakdown(req.user.id, tzOffsetMinutes);
     res.json({ success: true, data: breakdown });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error('[mood] getWeeklyBreakdown error:', error);
+    res.status(500).json({ success: false, message: 'An internal error occurred.' });
   }
 };
 

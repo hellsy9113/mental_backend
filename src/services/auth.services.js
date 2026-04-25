@@ -166,7 +166,7 @@ async function loginUser({ email, password }) {
       tokenVersion: user.tokenVersion ?? 0,
     },
     process.env.JWT_SECRET,
-    { expiresIn: '24h' }
+    { expiresIn: process.env.JWT_EXPIRES_IN || '1d' }
   );
 
   const baseUser = {

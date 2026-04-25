@@ -19,7 +19,9 @@ async function listUsers(req, res) {
     const users = await getAllUsers(role);
     res.status(200).json({ success: true, data: users });
   } catch (error) {
-    res.status(error.statusCode || 500).json({ success: false, message: error.message || 'Internal server error' });
+    console.error('[admin] listUsers error:', error);
+    const statusCode = error.statusCode || 500;
+    res.status(statusCode).json({ success: false, message: statusCode < 500 ? error.message : 'Internal server error' });
   }
 }
 
@@ -29,7 +31,9 @@ async function getUser(req, res) {
     const user = await getUserById(req.params.id);
     res.status(200).json({ success: true, data: user });
   } catch (error) {
-    res.status(error.statusCode || 500).json({ success: false, message: error.message || 'Internal server error' });
+    console.error('[admin] getUser error:', error);
+    const statusCode = error.statusCode || 500;
+    res.status(statusCode).json({ success: false, message: statusCode < 500 ? error.message : 'Internal server error' });
   }
 }
 
@@ -42,7 +46,9 @@ async function createUser(req, res) {
     const { password: _p, ...safe } = user.toObject ? user.toObject() : user;
     res.status(201).json({ success: true, data: safe });
   } catch (error) {
-    res.status(error.statusCode || 500).json({ success: false, message: error.message || 'Internal server error' });
+    console.error('[admin] createUser error:', error);
+    const statusCode = error.statusCode || 500;
+    res.status(statusCode).json({ success: false, message: statusCode < 500 ? error.message : 'Internal server error' });
   }
 }
 
@@ -53,7 +59,9 @@ async function changeUserRole(req, res) {
     const user = await updateUserRole(req.params.id, role);
     res.status(200).json({ success: true, data: user });
   } catch (error) {
-    res.status(error.statusCode || 500).json({ success: false, message: error.message || 'Internal server error' });
+    console.error('[admin] changeUserRole error:', error);
+    const statusCode = error.statusCode || 500;
+    res.status(statusCode).json({ success: false, message: statusCode < 500 ? error.message : 'Internal server error' });
   }
 }
 
@@ -63,7 +71,9 @@ async function removeUser(req, res) {
     const result = await deleteUser(req.params.id);
     res.status(200).json({ success: true, ...result });
   } catch (error) {
-    res.status(error.statusCode || 500).json({ success: false, message: error.message || 'Internal server error' });
+    console.error('[admin] removeUser error:', error);
+    const statusCode = error.statusCode || 500;
+    res.status(statusCode).json({ success: false, message: statusCode < 500 ? error.message : 'Internal server error' });
   }
 }
 
@@ -75,7 +85,9 @@ async function assignStudent(req, res) {
     const profile = await assignStudentToCounsellor(counsellorId, studentId);
     res.status(200).json({ success: true, data: profile });
   } catch (error) {
-    res.status(error.statusCode || 500).json({ success: false, message: error.message || 'Internal server error' });
+    console.error('[admin] assignStudent error:', error);
+    const statusCode = error.statusCode || 500;
+    res.status(statusCode).json({ success: false, message: statusCode < 500 ? error.message : 'Internal server error' });
   }
 }
 
@@ -87,7 +99,9 @@ async function unassignStudent(req, res) {
     const profile = await unassignStudentFromCounsellor(counsellorId, studentId);
     res.status(200).json({ success: true, data: profile });
   } catch (error) {
-    res.status(error.statusCode || 500).json({ success: false, message: error.message || 'Internal server error' });
+    console.error('[admin] unassignStudent error:', error);
+    const statusCode = error.statusCode || 500;
+    res.status(statusCode).json({ success: false, message: statusCode < 500 ? error.message : 'Internal server error' });
   }
 }
 
@@ -97,6 +111,7 @@ async function platformStats(req, res) {
     const stats = await getPlatformStats();
     res.status(200).json({ success: true, data: stats });
   } catch (error) {
+    console.error('[admin] platformStats error:', error);
     res.status(500).json({ success: false, message: 'Failed to load platform stats' });
   }
 }

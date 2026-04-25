@@ -1,12 +1,16 @@
 require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
+const cors    = require('cors');
+const helmet  = require('helmet');
 
 const app = express();
 
 // Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(helmet({                          // Security headers
+  crossOriginResourcePolicy: { policy: 'cross-origin' }, // Allow React frontend to read API responses
+}));
+app.use(express.json({ limit: '50kb' }));
+app.use(express.urlencoded({ extended: true, limit: '50kb' }));
 
 // ✅ CORS FIRST
 const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')

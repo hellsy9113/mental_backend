@@ -53,7 +53,7 @@ function notifySessionUpdated(studentId, counsellorId, sessionData) {
 function initSocket(httpServer) {
   const io = new Server(httpServer, {
     cors: {
-      origin:      process.env.FRONTEND_URL || 'http://localhost:5173',
+      origin:      (process.env.FRONTEND_URL || 'http://localhost:5173').split(',').map(o => o.trim()),
       credentials: true,
     },
   });

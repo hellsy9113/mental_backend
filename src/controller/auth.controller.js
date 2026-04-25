@@ -54,9 +54,11 @@ async function register(req, res) {
       role: user.role
     });
   } catch (error) {
-    res.status(error.statusCode || 500).json({
+    console.error('[auth] register error:', error);
+    const statusCode = error.statusCode || 500;
+    res.status(statusCode).json({
       success: false,
-      message: error.message || 'Server error'
+      message: statusCode < 500 ? error.message : 'Server error'
     });
   }
 }
@@ -72,9 +74,11 @@ async function login(req, res) {
       user: result.user   // { id, name, email, role }
     });
   } catch (error) {
-    res.status(error.statusCode || 500).json({
+    console.error('[auth] login error:', error);
+    const statusCode = error.statusCode || 500;
+    res.status(statusCode).json({
       success: false,
-      message: error.message || 'Server error'
+      message: statusCode < 500 ? error.message : 'Server error'
     });
   }
 }

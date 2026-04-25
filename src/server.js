@@ -10,8 +10,7 @@ if (!process.env.JWT_SECRET) {
   process.exit(1);
 }
 
-const fs = require('fs');
-fs.appendFileSync('startup.log', `[${new Date().toISOString()}] Server process start. MONGO_URL ENV: ${process.env.MONGO_URL ? 'PRESENT' : 'MISSING'}\n`);
+
 const PORT = process.env.PORT || 3000;
 
 (async () => {

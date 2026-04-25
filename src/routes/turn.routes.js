@@ -70,7 +70,7 @@ async function getTurnCredentials(req, res) {
  */
 function fetchCloudflareCredentials(tokenId, apiToken) {
   return new Promise((resolve, reject) => {
-    const body = JSON.stringify({ ttl: 86400 });
+    const body = JSON.stringify({ ttl: 300 });
 
     const options = {
       hostname: 'rtc.live.cloudflare.com',
