@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": {
     "test": "jest",
-    "start": "node src/app.js",
+    "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "test:auth": "jest tests/auth.test.js",
     "test:mood": "jest tests/mood.test.js",
@@ -30,6 +30,7 @@
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
     "express-rate-limit": "^8.4.1",
+    "express-validator": "^7.3.2",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.1.5",
